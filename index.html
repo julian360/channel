@@ -370,16 +370,27 @@
                 if (isAuthReady && db && currentPage === 'explore') {
                     setIsLoading(true);
                     const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
-                    const unsubscribe = window.onSnapshot(channelsColRef, (snapshot) => {
+                    // Eliminamos el orderBy de la consulta de Firestore para evitar errores
+                    const q = window.query(channelsColRef);
+                    const unsubscribe = window.onSnapshot(q, (snapshot) => {
                         const channelsData = snapshot.docs.map(doc => ({
                             id: doc.id,
                             name: doc.data().displayName || doc.id,
                             createdAt: doc.data().createdAt,
                             createdBy: doc.data().createdBy,
                             creatorUserName: doc.data().creatorUserName,
-                            dailyCoRoomUrl: doc.data().dailyCoRoomUrl
+                            dailyCoRoomUrl: doc.data().dailyCoRoomUrl,
+                            lastActivity: doc.data().lastActivity // Asegúrate de incluirlo
                         }));
-                        setAvailableChannels(channelsData);
+
+                        // Ordenar en el cliente por lastActivity o createdAt
+                        const sortedChannels = [...channelsData].sort((a, b) => {
+                            const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
+                            const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
+                            return dateB - dateA; // De más reciente a más antiguo
+                        });
+
+                        setAvailableChannels(sortedChannels);
                         setIsLoading(false);
                     }, (error) => {
                         console.error("Error al obtener canales:", error);
@@ -445,6 +456,10 @@
                     showMessage('Por favor, ingresa un nombre de usuario.', 'error');
                     return;
                 }
+                if (userName.trim().length > 48) { // Max length check for username
+                    showMessage('El nombre de usuario no puede exceder los 48 caracteres.', 'error');
+                    return;
+                }
                 if (!isAuthReady || !db || !userId) {
                     console.warn("Firebase no está listo aún. No se puede guardar el nombre de usuario.");
                     showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
@@ -477,6 +492,10 @@
                     }
                     return;
                 }
+                if (channelName.trim().length > 128) { // Max length check for channel name
+                    showMessage('El nombre del canal no puede exceder los 128 caracteres.', 'error');
+                    return;
+                }
                 if (!isAuthReady || !db || !userId) {
                     console.warn("Firebase no está listo aún. Por favor, espera.");
                     showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
@@ -505,7 +524,8 @@
                             createdAt: new Date().toISOString(),
                             createdBy: userId,
                             creatorUserName: userName,
-                            dailyCoRoomUrl: dailyCoRoomUrl
+                            dailyCoRoomUrl: dailyCoRoomUrl,
+                            lastActivity: window.serverTimestamp() // Establece lastActivity en la creación
                         });
                         setActiveChannel(originalChannelInput);
                         setCurrentPage('channel');
@@ -579,6 +599,11 @@
                     });
                     setCurrentMessage('');
                     scrollToBottom();
+
+                    // Actualizar la última actividad del canal
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+                    await window.setDoc(channelDocRef, { lastActivity: window.serverTimestamp() }, { merge: true });
+
                 } catch (error) {
                     console.error("Error al enviar mensaje:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
@@ -931,6 +956,7 @@
                                             setUserNameConfirmed(false);
                                         }
                                     }}
+                                    maxLength="48"
                                     disabled={userNameConfirmed}
                                 />
                                 {!userNameConfirmed && (
@@ -966,6 +992,7 @@
                                         handleCreateChannel();
                                     }
                                 }}
+                                maxLength="128"
                                 disabled={!userNameConfirmed}
                             />
                         </div>
