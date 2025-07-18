@@ -515,7 +515,8 @@
                         showMessage(`¡Canal "${originalChannelInput}" creado y te has unido!`, 'success');
                     }
 
-                    // NUEVO: Añadir usuario a la subcolección de miembros del canal
+                    // MODIFICACIÓN: Añadir usuario a la subcolección de miembros del canal,
+                    // tanto si el canal es nuevo como si ya existía y el usuario se unió.
                     const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
                     await window.setDoc(memberDocRef, {
                         userName: userName,
