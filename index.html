@@ -196,7 +196,7 @@
             // NUEVO: Estado para el estado de carga general
             const [isLoading, setIsLoading] = React.useState(true);
 
-            // Estado para la visibilidad del menú de opciones
+            // Estado para la visibilidad del menú de opciones (para la página de canal)
             const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
             // NUEVO: Estado para la visibilidad del panel de actividad (lista de usuarios)
             const [showActivityPanel, setShowActivityPanel] = React.useState(false);
@@ -221,10 +221,24 @@
             const channelInputRef = React.useRef(null);
             // NUEVO: Ref para el div de mensajes de chat para habilitar el desplazamiento automático
             const chatMessagesEndRef = React.useRef(null);
-            // Ref para el botón del menú de opciones para manejar clics externos
+            // Ref para el botón del menú de opciones para manejar clics externos (para la página de canal)
             const optionsMenuRef = React.useRef(null);
+            // NUEVO: Ref para el menú de opciones de la página de exploración
+            const exploreMenuRef = React.useRef(null);
             // NUEVO: Ref para la entrada de archivo oculta
             const fileInputRef = React.useRef(null);
+
+            // NUEVO: Estado para la opción de ordenamiento en la página de exploración
+            // 'activity' (mayor actividad/más reciente), 'recent' (más recientes por creación)
+            const [sortOption, setSortOption] = React.useState('activity');
+            // NUEVO: Estado para controlar la visibilidad del menú de exploración
+            const [showExploreMenu, setShowExploreMenu] = React.useState(false);
+            // NUEVO: Estado para la consulta de búsqueda en la página de exploración
+            const [searchQuery, setSearchQuery] = React.useState('');
+            // NUEVO: Estado para controlar la visibilidad del campo de búsqueda
+            const [showSearchInput, setShowSearchInput] = React.useState(false);
+            // NUEVO: Ref para el input de búsqueda
+            const searchInputRef = React.useRef(null);
 
 
             // Función para mostrar un mensaje
@@ -356,22 +370,25 @@
                 const handleClickOutside = (event) => {
                     if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target)) {
                         setShowOptionsMenu(false);
-                        setShowActivityPanel(false); // Cierra también el panel de actividad
+                        setShowActivityPanel(false);
+                    }
+                    // NUEVO: Cerrar el menú de exploración si se hace clic fuera
+                    if (exploreMenuRef.current && !exploreMenuRef.current.contains(event.target)) {
+                        setShowExploreMenu(false);
                     }
                 };
                 document.addEventListener("mousedown", handleClickOutside);
                 return () => {
                     document.removeEventListener("mousedown", handleClickOutside);
                 };
-            }, [optionsMenuRef]);
+            }, [optionsMenuRef, exploreMenuRef]);
 
 
             React.useEffect(() => {
                 if (isAuthReady && db && currentPage === 'explore') {
                     setIsLoading(true);
                     const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
-                    // Eliminamos el orderBy de la consulta de Firestore para evitar errores
-                    const q = window.query(channelsColRef);
+                    const q = window.query(channelsColRef); // No orderBy here, sort in client
                     const unsubscribe = window.onSnapshot(q, (snapshot) => {
                         const channelsData = snapshot.docs.map(doc => ({
                             id: doc.id,
@@ -383,14 +400,33 @@
                             lastActivity: doc.data().lastActivity // Asegúrate de incluirlo
                         }));
 
-                        // Ordenar en el cliente por lastActivity o createdAt
-                        const sortedChannels = [...channelsData].sort((a, b) => {
-                            const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
-                            const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
-                            return dateB - dateA; // De más reciente a más antiguo
-                        });
+                        let processedChannels = [...channelsData];
 
-                        setAvailableChannels(sortedChannels);
+                        // Aplicar ordenamiento basado en sortOption
+                        if (sortOption === 'activity') {
+                            // Ordenar por lastActivity (más reciente a más antiguo)
+                            processedChannels.sort((a, b) => {
+                                const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
+                                const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
+                                return dateB.getTime() - dateA.getTime();
+                            });
+                        } else if (sortOption === 'recent') {
+                            // Ordenar por createdAt (más reciente a más antiguo)
+                            processedChannels.sort((a, b) => {
+                                const dateA = new Date(a.createdAt);
+                                const dateB = new Date(b.createdAt);
+                                return dateB.getTime() - dateA.getTime();
+                            });
+                        }
+
+                        // Aplicar filtro de búsqueda
+                        if (searchQuery) {
+                            processedChannels = processedChannels.filter(channel =>
+                                channel.name.toLowerCase().includes(searchQuery.toLowerCase())
+                            );
+                        }
+
+                        setAvailableChannels(processedChannels);
                         setIsLoading(false);
                     }, (error) => {
                         console.error("Error al obtener canales:", error);
@@ -404,7 +440,15 @@
 
                     return () => unsubscribe();
                 }
-            }, [isAuthReady, db, currentPage]);
+            }, [isAuthReady, db, currentPage, sortOption, searchQuery]); // Añadir sortOption y searchQuery a las dependencias
+
+            // NUEVO: Efecto para enfocar el input de búsqueda cuando aparece
+            React.useEffect(() => {
+                if (showSearchInput && searchInputRef.current) {
+                    searchInputRef.current.focus();
+                }
+            }, [showSearchInput]);
+
 
             React.useEffect(() => {
                 if (isAuthReady && db && activeChannel && currentPage === 'channel') {
@@ -1179,9 +1223,70 @@
 
             const renderExplorePage = () => (
                 <div className="flex flex-col items-center justify-start min-h-screen bg-gradient-to-br from-teal-500 to-cyan-600 p-4 font-inter">
-                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8">
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8 relative"> {/* Added relative for absolute positioning */}
                         <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Explorar Canales</h1>
                         <p className="text-lg text-gray-600 mb-8"> </p>
+
+                        {/* Menu de opciones en la esquina superior derecha */}
+                        <div className="absolute top-4 right-4" ref={exploreMenuRef}>
+                            <button
+                                onClick={() => setShowExploreMenu(!showExploreMenu)}
+                                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+                                aria-label="Opciones de exploración"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-6 w-6"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <circle cx="12" cy="12" r="1"></circle>
+                                    <circle cx="12" cy="5" r="1"></circle>
+                                    <circle cx="12" cy="19" r="1"></circle>
+                                </svg>
+                            </button>
+                            {showExploreMenu && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                                    <button
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                                        onClick={() => { setSortOption('activity'); setShowExploreMenu(false); setShowSearchInput(false); setSearchQuery(''); }}
+                                    >
+                                        Mayor actividad
+                                    </button>
+                                    <button
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                                        onClick={() => { setSortOption('recent'); setShowExploreMenu(false); setShowSearchInput(false); setSearchQuery(''); }}
+                                    >
+                                        Más Recientes
+                                    </button>
+                                    <button
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                                        onClick={() => {
+                                            setShowSearchInput(!showSearchInput);
+                                            setShowExploreMenu(false);
+                                            setSortOption('none'); // Reset sorting when searching
+                                        }}
+                                    >
+                                        Buscar canal
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {showSearchInput && (
+                            <div className="mb-6 mt-4">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar canal por nombre..."
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-lg"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    ref={searchInputRef}
+                                />
+                            </div>
+                        )}
 
                         {availableChannels.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
