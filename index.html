@@ -385,11 +385,16 @@
 
 
             React.useEffect(() => {
-                if (isAuthReady && db && currentPage === 'explore') {
+                const fetchChannels = async () => {
+                    if (!isAuthReady || !db) {
+                        return;
+                    }
                     setIsLoading(true);
                     const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
-                    const q = window.query(channelsColRef); // No orderBy here, sort in client
-                    const unsubscribe = window.onSnapshot(q, (snapshot) => {
+                    const q = window.query(channelsColRef);
+
+                    try {
+                        const snapshot = await window.getDocs(q);
                         const channelsData = snapshot.docs.map(doc => ({
                             id: doc.id,
                             name: doc.data().displayName || doc.id,
@@ -397,21 +402,18 @@
                             createdBy: doc.data().createdBy,
                             creatorUserName: doc.data().creatorUserName,
                             dailyCoRoomUrl: doc.data().dailyCoRoomUrl,
-                            lastActivity: doc.data().lastActivity // Asegúrate de incluirlo
+                            lastActivity: doc.data().lastActivity
                         }));
 
                         let processedChannels = [...channelsData];
 
-                        // Aplicar ordenamiento basado en sortOption
                         if (sortOption === 'activity') {
-                            // Ordenar por lastActivity (más reciente a más antiguo)
                             processedChannels.sort((a, b) => {
                                 const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
                                 const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
                                 return dateB.getTime() - dateA.getTime();
                             });
                         } else if (sortOption === 'recent') {
-                            // Ordenar por createdAt (más reciente a más antiguo)
                             processedChannels.sort((a, b) => {
                                 const dateA = new Date(a.createdAt);
                                 const dateB = new Date(b.createdAt);
@@ -419,7 +421,6 @@
                             });
                         }
 
-                        // Aplicar filtro de búsqueda
                         if (searchQuery) {
                             processedChannels = processedChannels.filter(channel =>
                                 channel.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -427,20 +428,31 @@
                         }
 
                         setAvailableChannels(processedChannels);
-                        setIsLoading(false);
-                    }, (error) => {
+                    } catch (error) {
                         console.error("Error al obtener canales:", error);
                         if (error.code === 'unavailable' || error.code === 'permission-denied') {
                             showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
                         } else {
                             showMessage("Error al cargar canales. Consulta la consola.", 'error');
                         }
+                    } finally {
                         setIsLoading(false);
-                    });
+                    }
+                };
 
-                    return () => unsubscribe();
+                let intervalId;
+                if (currentPage === 'explore') {
+                    fetchChannels(); // Llamada inicial al entrar en la página
+                    intervalId = setInterval(fetchChannels, 60000); // Refrescar cada 60 segundos
                 }
-            }, [isAuthReady, db, currentPage, sortOption, searchQuery]); // Añadir sortOption y searchQuery a las dependencias
+
+                return () => {
+                    if (intervalId) {
+                        clearInterval(intervalId); // Limpiar el intervalo al salir de la página
+                    }
+                };
+            }, [isAuthReady, db, currentPage, sortOption, searchQuery]);
+
 
             // NUEVO: Efecto para enfocar el input de búsqueda cuando aparece
             React.useEffect(() => {
