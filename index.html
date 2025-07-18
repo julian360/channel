@@ -264,7 +264,7 @@
                 const handleAppInstalled = () => {
                     setIsPwaInstalled(true);
                     setDeferredPrompt(null); // Limpia el prompt ya que la app está instalada
-                    showMessage('¡CHANNEL App instalada con éxito!', 'success');
+                    showMessage('Instalando CHANNEL App...', 'success');
                     console.log('PWA was installed');
                 };
                 window.addEventListener('appinstalled', handleAppInstalled);
