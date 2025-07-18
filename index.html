@@ -12,11 +12,8 @@
 
     <script src="https://unpkg.com/@daily-co/daily-js"></script>
 
-    <!-- PWA: Añade el enlace al manifest.json con la ruta corregida para tu repositorio 'channel' -->
     <link rel="manifest" href="/channel/manifest.json">
-    <!-- PWA: Añade el icono táctil de Apple para iOS con la ruta corregida para tu repositorio 'channel' -->
     <link rel="apple-touch-icon" href="/channel/icons/icon-192x192.png">
-    <!-- PWA: Establece el color del tema para la interfaz de usuario del navegador -->
     <meta name="theme-color" content="#2563eb">
 
     <script type="module">
@@ -1059,6 +1056,16 @@
                                                             🎵 {msg.fileName || 'Audio Adjunto'}
                                                         </span>
                                                     </a>
+                                                ) : // Check if the file type is video
+                                                msg.fileType && msg.fileType.startsWith('video/') ? (
+                                                    <div className="flex flex-col items-start">
+                                                        <p className="text-sm md:text-base text-gray-800 mb-1">
+                                                            ▶️ <strong>Video</strong>
+                                                        </p>
+                                                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
+                                                            {msg.fileName || 'Video Adjunto'}
+                                                        </a>
+                                                    </div>
                                                 ) : (
                                                     // Otherwise, render as a general file link
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
