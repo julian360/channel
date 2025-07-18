@@ -201,6 +201,13 @@
 
             // Estado para la visibilidad del menú de opciones
             const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
+            // NUEVO: Estado para la visibilidad del panel de actividad (lista de usuarios)
+            const [showActivityPanel, setShowActivityPanel] = React.useState(false);
+            // NUEVO: Estado para almacenar los miembros del canal (histórico)
+            const [channelMembers, setChannelMembers] = React.useState([]);
+            // NUEVO: Estado para almacenar los participantes actualmente online en la llamada Daily.co
+            const [onlineParticipants, setOnlineParticipants] = React.useState(new Set());
+
 
             // Estados de Daily.co
             const [dailyCallFrame, setDailyCallFrame] = React.useState(null); // El objeto del marco de llamada de Daily.co
@@ -352,6 +359,7 @@
                 const handleClickOutside = (event) => {
                     if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target)) {
                         setShowOptionsMenu(false);
+                        setShowActivityPanel(false); // Cierra también el panel de actividad
                     }
                 };
                 document.addEventListener("mousedown", handleClickOutside);
@@ -412,9 +420,26 @@
                         }
                     });
 
-                    return () => unsubscribe();
+                    // NUEVO: Listener para miembros del canal
+                    const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/members`);
+                    const unsubscribeMembers = window.onSnapshot(membersColRef, (snapshot) => {
+                        const membersData = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setChannelMembers(membersData);
+                    }, (error) => {
+                        console.error("Error al obtener miembros del canal:", error);
+                    });
+
+
+                    return () => {
+                        unsubscribe();
+                        unsubscribeMembers(); // Limpia también el listener de miembros
+                    };
                 } else {
                     setChatMessages([]);
+                    setChannelMembers([]); // Limpia también los miembros
                 }
             }, [isAuthReady, db, activeChannel, currentPage]);
 
@@ -469,7 +494,7 @@
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
                     const docSnap = await window.getDoc(channelDocRef);
 
-                    const dailyCoRoomUrl = `https://YOUR_DAILY_DOMAIN.daily.co/${normalizedChannelName}-video`;
+                    const dailyCoRoomUrl = `https://YOUR_DAILY_DOMAIN.daily.co/${normalizedChannelName}-video`; // Asegúrate de reemplazar YOUR_DAILY_DOMAIN
 
                     if (docSnap.exists()) {
                         const existingChannelDisplayName = docSnap.data().displayName || normalizedChannelName;
@@ -489,6 +514,14 @@
                         setCurrentPage('channel');
                         showMessage(`¡Canal "${originalChannelInput}" creado y te has unido!`, 'success');
                     }
+
+                    // NUEVO: Añadir usuario a la subcolección de miembros del canal
+                    const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
+                    await window.setDoc(memberDocRef, {
+                        userName: userName,
+                        joinedAt: window.serverTimestamp()
+                    }, { merge: true });
+
                 } catch (error) {
                     console.error("Error al crear o unirse al canal:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
@@ -501,7 +534,7 @@
                 }
             };
 
-            const handleJoinChannelFromExplore = (channelToJoin) => {
+            const handleJoinChannelFromExplore = async (channelToJoin) => {
                 setActiveChannel(channelToJoin.name);
                 setCurrentPage('channel');
                 if (dailyCallFrame) {
@@ -510,6 +543,20 @@
                     setIsStreaming(false);
                 }
                 showMessage(`Te has unido al canal: ${channelToJoin.name}`, 'success');
+
+                // NUEVO: Añadir usuario a la subcolección de miembros del canal
+                if (isAuthReady && db && userId && userName) {
+                    const normalizedChannelName = channelToJoin.name.toLowerCase();
+                    const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
+                    try {
+                        await window.setDoc(memberDocRef, {
+                            userName: userName,
+                            joinedAt: window.serverTimestamp()
+                        }, { merge: true });
+                    } catch (error) {
+                        console.error("Error al añadir miembro al unirse al canal:", error);
+                    }
+                }
             };
 
             const handleSendMessage = async () => {
@@ -584,13 +631,24 @@
                     const docSnap = await window.getDoc(channelDocRef);
 
                     if (docSnap.exists() && docSnap.data().createdBy === userId) {
+                        // Eliminar subcolección de mensajes
                         const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`);
                         const messagesSnapshot = await window.getDocs(messagesColRef);
-                        const deletePromises = [];
+                        const deleteMessagePromises = [];
                         messagesSnapshot.forEach(msgDoc => {
-                            deletePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`, msgDoc.id)));
+                            deleteMessagePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`, msgDoc.id)));
                         });
-                        await Promise.all(deletePromises);
+                        await Promise.all(deleteMessagePromises);
+
+                        // NUEVO: Eliminar subcolección de miembros
+                        const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`);
+                        const membersSnapshot = await window.getDocs(membersColRef);
+                        const deleteMemberPromises = [];
+                        membersSnapshot.forEach(memberDoc => {
+                            deleteMemberPromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`, memberDoc.id)));
+                        });
+                        await Promise.all(deleteMemberPromises);
+
 
                         await window.deleteDoc(channelDocRef);
                         showMessage(`Canal "${channelDisplayName}" eliminado con éxito.`, 'success');
@@ -670,12 +728,36 @@
                                 videoContainerElement.classList.remove('hidden');
                             }
                             setIsLoading(false);
+
+                            // NUEVO: Inicializar participantes online
+                            const participants = call.participants();
+                            const currentOnline = new Set();
+                            for (const id in participants) {
+                                currentOnline.add(id);
+                            }
+                            setOnlineParticipants(currentOnline);
                         });
+
+                        call.on('participant-joined', (e) => {
+                            console.log('Daily.co: Participant joined', e.participant.user_id);
+                            setOnlineParticipants(prev => new Set(prev).add(e.participant.user_id));
+                        });
+
+                        call.on('participant-left', (e) => {
+                            console.log('Daily.co: Participant left', e.participant.user_id);
+                            setOnlineParticipants(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(e.participant.user_id);
+                                return newSet;
+                            });
+                        });
+
 
                         call.on('left-meeting', () => {
                             console.log('Daily.co: Left meeting');
                             setIsStreaming(false);
                             setDailyCallFrame(null);
+                            setOnlineParticipants(new Set()); // Limpiar participantes online
                             showMessage("La transmisión ha terminado.", 'info');
                             if (videoContainerElement) {
                                 videoContainerElement.classList.add('hidden');
@@ -690,6 +772,7 @@
                             setDailyError(e);
                             showMessage(`Error de video: ${e.message}`, 'error');
                             setIsStreaming(false);
+                            setOnlineParticipants(new Set()); // Limpiar participantes online
                             if (call.iframe && call.iframe.parentNode) {
                                 call.iframe.parentNode.removeChild(call.iframe);
                             }
@@ -738,6 +821,7 @@
                 }
                 setShowOptionsMenu(false);
             };
+
 
             const onFileSelected = async (event) => {
                 const file = event.target.files[0];
@@ -941,7 +1025,8 @@
                                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { handleToggleCamera(); setShowOptionsMenu(false); }}>Stream 🎥</button>
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Adjuntar Archivo 📎</button>
-                                    <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setShowOptionsMenu(false)}>Opción 3</a>
+                                    {/* CAMBIO: "Opción 3" a "Actividad" y su manejador */}
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { setShowActivityPanel(true); setShowOptionsMenu(false); }}>Actividad 👥</button>
                                 </div>
                             )}
                         </div>
@@ -1020,6 +1105,40 @@
                             </div>
                         )}
                     </div>
+
+                    {/* NUEVO: Panel de Actividad (Lista de Usuarios) */}
+                    {showActivityPanel && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-end z-40">
+                            <div className="bg-white w-full max-w-xs p-6 rounded-l-2xl shadow-lg flex flex-col">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl font-bold text-gray-800">Actividad del Canal</h2>
+                                    <button
+                                        onClick={() => setShowActivityPanel(false)}
+                                        className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
+                                    >
+                                        &times;
+                                    </button>
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-3">Miembros del Canal:</h3>
+                                <div className="flex-grow overflow-y-auto">
+                                    {channelMembers.length > 0 ? (
+                                        <ul className="space-y-2">
+                                            {channelMembers.map((member) => (
+                                                <li key={member.id} className="flex items-center text-gray-700">
+                                                    <span className="font-medium">{member.userName}</span>
+                                                    {onlineParticipants.has(member.id) && (
+                                                        <span className="ml-2 w-3 h-3 bg-green-500 rounded-full" title="Online"></span>
+                                                    )}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-gray-500 italic">No hay miembros registrados aún.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
 
@@ -1055,7 +1174,7 @@
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-gray-500 italic">  </p>
+                            <p className="text-gray-500 italic">No hay canales disponibles. ¡Sé el primero en crear uno!</p>
                         )}
                     </div>
                 </div>
