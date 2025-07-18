@@ -207,6 +207,12 @@
             const [isStreaming, setIsStreaming] = React.useState(false); // Indica si Daily.co está activo
             const [dailyError, setDailyError] = React.useState(null); // Para errores específicos de Daily.co
 
+            // PWA: Estado para el evento beforeinstallprompt
+            const [deferredPrompt, setDeferredPrompt] = React.useState(null);
+            // PWA: Estado para saber si la PWA ya está instalada
+            const [isPwaInstalled, setIsPwaInstalled] = React.useState(false);
+
+
             // Ref para el campo de entrada del nombre del canal
             const channelInputRef = React.useRef(null);
             // NUEVO: Ref para el div de mensajes de chat para habilitar el desplazamiento automático
@@ -228,6 +234,37 @@
             const scrollToBottom = () => {
                 chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             };
+
+            // PWA: Maneja el evento beforeinstallprompt
+            React.useEffect(() => {
+                const handler = (e) => {
+                    // Previene que el navegador muestre su propio prompt de instalación
+                    e.preventDefault();
+                    // Almacena el evento para poder dispararlo más tarde
+                    setDeferredPrompt(e);
+                    console.log('beforeinstallprompt event fired!');
+                };
+                window.addEventListener('beforeinstallprompt', handler);
+
+                // Verifica si la aplicación ya está instalada (en modo standalone)
+                if (window.matchMedia('(display-mode: standalone)').matches) {
+                    setIsPwaInstalled(true);
+                }
+
+                return () => window.removeEventListener('beforeinstallprompt', handler);
+            }, []);
+
+            // PWA: Maneja el evento appinstalled (cuando el usuario instala la PWA)
+            React.useEffect(() => {
+                const handleAppInstalled = () => {
+                    setIsPwaInstalled(true);
+                    setDeferredPrompt(null); // Limpia el prompt ya que la app está instalada
+                    showMessage('¡CHANNEL App instalada con éxito!', 'success');
+                    console.log('PWA was installed');
+                };
+                window.addEventListener('appinstalled', handleAppInstalled);
+                return () => window.removeEventListener('appinstalled', handleAppInstalled);
+            }, []);
 
             // Inicializa Firebase y maneja la autenticación
             React.useEffect(() => {
@@ -766,10 +803,33 @@
             };
 
 
+            // PWA: Manejador para el botón de instalación
+            const handleInstallClick = async () => {
+                if (deferredPrompt) {
+                    // Muestra el prompt de instalación
+                    deferredPrompt.prompt();
+                    // Espera la elección del usuario
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`User response to the install prompt: ${outcome}`);
+                    // Limpia el evento después de la elección del usuario
+                    setDeferredPrompt(null);
+                }
+            };
+
             const renderHomePage = () => (
                 <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-600 to-blue-500 p-4 font-inter">
                     <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
                         <h1 className="text-4xl font-extrabold text-gray-800 mb-6">CHANNEL</h1>
+
+                        {/* PWA: Botón de instalación condicional */}
+                        {deferredPrompt && !isPwaInstalled && (
+                            <button
+                                onClick={handleInstallClick}
+                                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mb-4"
+                            >
+                                Instalar App
+                            </button>
+                        )}
 
                         <div className="mb-6">
                             <label htmlFor="username-input" className="block text-gray-700 text-sm font-bold mb-2">
