@@ -8,6 +8,11 @@
     "theme_color": "#2563eb",
     "icons": [
         {
+            "src": "/channel/icons/ffffff.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        },
+        {
             "src": "/channel/icons/icon-72x72.png",
             "sizes": "72x72",
             "type": "image/png"
