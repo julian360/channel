@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHANNEL App (GitHub Pages)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script src="https://unpkg.com/@daily-co/daily-js"></script>
+
+    <!-- PWA: Añade el enlace al manifest.json con la ruta corregida para tu repositorio 'channel' -->
+    <link rel="manifest" href="/channel/manifest.json">
+    <!-- PWA: Añade el icono táctil de Apple para iOS con la ruta corregida para tu repositorio 'channel' -->
+    <link rel="apple-touch-icon" href="/channel/icons/icon-192x192.png">
+    <!-- PWA: Establece el color del tema para la interfaz de usuario del navegador -->
+    <meta name="theme-color" content="#2563eb">
+
+    <script type="module">
+        // Importa módulos de Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Importa addDoc, getDocs, deleteDoc y serverTimestamp para añadir mensajes y marcas de tiempo
+        import { getFirestore, doc, getDoc, setDoc, collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+
+        // Variables globales para la configuración de Firebase.
+        // IMPORTANTE: En un entorno Canvas real, estas se proporcionan automáticamente.
+        // Para pruebas locales, tus detalles de configuración de Firebase reales ahora están incluidos a continuación.
+        window.__app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Reemplaza 'default-app-id' si Canvas proporciona uno
+        window.__firebase_config = typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
+            apiKey: "AIzaSyBELawPeUmP2tRaL19X7Tr6MRcI9oMgdSM", // Tu clave API de Firebase
+            authDomain: "channel-jl.firebaseapp.com", // Tu dominio de autenticación de Firebase
+            projectId: "channel-jl", // Tu ID de proyecto de Firebase
+            storageBucket: "channel-jl.firebasestorage.app", // Tu Firebase Storage Bucket
+            messagingSenderId: "350780625607", // Tu ID de aplicación de Firebase
+            appId: "1:350780625607:web:a0275d6d6ee89b0813a4e2" // Tu ID de aplicación de Firebase
+        });
+        window.__initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : ''; // Deja vacío para inicio de sesión anónimo
+
+        // Inicializa los servicios de Firebase globalmente
+        window.firebaseApp = initializeApp(JSON.parse(window.__firebase_config));
+        console.log("DEBUG PROFUNDO: window.firebaseApp:", window.firebaseApp); // Registra el objeto completo de la app
+        window.db = getFirestore(window.firebaseApp);
+        window.auth = getAuth(window.firebaseApp);
+
+        // Expone las funciones de Firebase Firestore globalmente para que el componente React las use
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.doc = doc;
+        window.getDoc = getDoc;
+        window.setDoc = setDoc;
+        window.collection = collection;
+        window.query = query;
+        window.onSnapshot = onSnapshot;
+        // Expone nuevas funciones de Firestore
+        window.addDoc = addDoc;
+        window.serverTimestamp = serverTimestamp;
+        window.orderBy = orderBy;
+        window.getDocs = getDocs; // Expone getDocs para la eliminación de subcolecciones
+        window.deleteDoc = deleteDoc; // Expone deleteDoc para la eliminación de canales
+
+
+        // Inicia sesión de forma anónima si no se proporciona un token de autenticación inicial.
+        // Esto asegura que un usuario siempre esté autenticado para las operaciones de Firestore.
+        onAuthStateChanged(window.auth, async (user) => {
+            if (!user) {
+                try {
+                    if (window.__initial_auth_token) {
+                        await signInWithCustomToken(window.auth, window.__initial_auth_token);
+                    } else {
+                        await signInAnonymously(window.auth);
+                    }
+                } catch (error) {
+                    console.error("Error durante el inicio de sesión anónimo:", error);
+                }
+            }
+        });
+
+        // PWA: Registra el Service Worker con la ruta corregida para tu repositorio 'channel'
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/channel/service-worker.js')
+                    .then(registration => {
+                        console.log('Service Worker registrado: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('Fallo el registro del Service Worker: ', registrationError);
+                    });
+            });
+        }
+    </script>
+    <style>
+        /* Estilo básico para el cuerpo para aplicar la fuente Inter */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* El iframe de Daily.co llenará su contenedor padre */
+        #daily-video-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none; /* Elimina el borde predeterminado del iframe */
+        }
+
+        /* Estilos del spinner */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Estilo añadido para el botón de retroceso para asegurar que sea clickeable */
+        .back-button-z-index {
+            z-index: 60 !important; /* Más alto que el z-index del spinner (50) */
+            position: relative; /* Asegura que se aplique el z-index */
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Función de ayuda para generar un nombre de usuario aleatorio para nuevos usuarios
+        const generateRandomUserName = () => {
+            const adjectives = ['Veloz', 'Sabio', 'Curioso', 'Audaz', 'Brillante', 'Silencioso', 'Fuerte', 'Gentil'];
+            const nouns = ['Lobo', 'Zorro', 'Águila', 'Tigre', 'Oso', 'Panda', 'Delfín', 'León'];
+            const randomAdjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+            const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+            const randomNumber = Math.floor(Math.random() * 1000);
+            return `${randomAdjective}${randomNoun}${randomNumber}`;
+        };
+
+        // Componente de mensaje para mostrar retroalimentación al usuario (reemplaza alert())
+        const MessageDisplay = ({ message, type, onClose }) => {
+            if (!message) return null;
+
+            const bgColor = type === 'error' ? 'bg-red-100 border-red-400 text-red-700' : 'bg-green-100 border-green-400 text-green-700';
+            const borderColor = type === 'error' ? 'border-red-500' : 'border-green-500';
+
+            return (
+                <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg flex items-center justify-between z-50 ${bgColor} border ${borderColor}`}>
+                    <p className="font-semibold">{message}</p>
+                    <button onClick={onClose} className="ml-4 text-lg font-bold">
+                        &times;
+                    </button>
+                </div>
+            );
+        };
+
+        // Componente de spinner de carga
+        const LoadingSpinner = () => (
+            // Este div sigue siendo el overlay de pantalla completa (sin fondo propio)
+            <div className="fixed inset-0 flex items-center justify-center z-50">
+                {/* Este nuevo div es el contenedor para el spinner y el texto, y tendrá el fondo semitransparente */}
+                <div style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', padding: '20px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="spinner"></div>
+                    <p className="ml-4 text-white text-lg">Cargando...</p>
+                </div>
+            </div>
+        );
+        // Componente principal de la aplicación
+        const App = () => {
+            // Estado para gestionar la vista actual: 'home', 'channel' o 'explore'
+            const [currentPage, setCurrentPage] = React.useState('home');
+            // Estado para almacenar el nombre del canal introducido por el usuario
+            const [channelName, setChannelName] = React.useState('');
+            // Estado para almacenar el nombre del canal activo al ver un canal
+            const [activeChannel, setActiveChannel] = React.useState('');
+            // Estado para almacenar una lista de canales disponibles para la página de exploración
+            const [availableChannels, setAvailableChannels] = React.useState([]);
+            // Estado para almacenar el nombre de visualización elegido por el usuario
+            const [userName, setUserName] = React.useState('');
+            // Estado para rastrear si el nombre de usuario ha sido confirmado
+            const [userNameConfirmed, setUserNameConfirmed] = React.useState(false);
+            // Estado para mostrar mensajes al usuario
+            const [message, setMessage] = React.useState(null);
+            const [messageType, setMessageType] = React.useState('');
+
+            // NUEVO: Estado para el mensaje actual que se está escribiendo
+            const [currentMessage, setCurrentMessage] = React.useState('');
+            // NUEVO: Estado para los mensajes de chat
+            const [chatMessages, setChatMessages] = React.useState([]);
+
+            // Firebase related states
+            const [db, setDb] = React.useState(null);
+            const [auth, setAuth] = React.useState(null);
+            const [userId, setUserId] = React.useState(null);
+            const [isAuthReady, setIsAuthReady] = React.useState(false);
+            // NUEVO: Estado para el estado de carga general
+            const [isLoading, setIsLoading] = React.useState(true);
+
+            // Estado para la visibilidad del menú de opciones
+            const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
+
+            // Estados de Daily.co
+            const [dailyCallFrame, setDailyCallFrame] = React.useState(null); // El objeto del marco de llamada de Daily.co
+            const [isStreaming, setIsStreaming] = React.useState(false); // Indica si Daily.co está activo
+            const [dailyError, setDailyError] = React.useState(null); // Para errores específicos de Daily.co
+
+            // Ref para el campo de entrada del nombre del canal
+            const channelInputRef = React.useRef(null);
+            // NUEVO: Ref para el div de mensajes de chat para habilitar el desplazamiento automático
+            const chatMessagesEndRef = React.useRef(null);
+            // Ref para el botón del menú de opciones para manejar clics externos
+            const optionsMenuRef = React.useRef(null);
+            // NUEVO: Ref para la entrada de archivo oculta
+            const fileInputRef = React.useRef(null);
+
+
+            // Función para mostrar un mensaje
+            const showMessage = (msg, type = 'success') => {
+                setMessage(msg);
+                setMessageType(type);
+                setTimeout(() => setMessage(null), 3000); // Borra el mensaje después de 3 segundos
+            };
+
+            // NUEVO: Función para desplazarse al final de los mensajes de chat
+            const scrollToBottom = () => {
+                chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            // Inicializa Firebase y maneja la autenticación
+            React.useEffect(() => {
+                const initializeApp = async () => {
+                    try {
+                        // Los servicios de Firebase ahora están disponibles en el objeto window
+                        setDb(window.db);
+                        setAuth(window.auth);
+
+                        // Carga el nombre de usuario del almacenamiento local (caché) o genera uno aleatorio
+                        const storedUserName = localStorage.getItem('channelUserName');
+                        if (storedUserName) {
+                            setUserName(storedUserName);
+                            setUserNameConfirmed(true); // Si se encuentra en caché, se considera confirmado
+                        } else {
+                            // Si no hay nombre almacenado, genera uno aleatorio y confírmalo por defecto
+                            const newRandomName = generateRandomUserName();
+                            setUserName(newRandomName);
+                            localStorage.setItem('channelUserName', newRandomName); // Guarda el nombre aleatorio en caché
+                            setUserNameConfirmed(true); // Confirmed by default
+                        }
+
+                        // Escucha los cambios en el estado de autenticación y establece userId
+                        const unsubscribe = window.onAuthStateChanged(window.auth, (user) => {
+                            if (user) {
+                                setUserId(user.uid);
+                            } else {
+                                // Si el usuario no está autenticado, genera un UUID aleatorio como userId de respaldo
+                                // Nota: crypto.randomUUID() podría no estar disponible en todos los navegadores antiguos
+                                setUserId(window.auth.currentUser?.uid || (Math.random().toString(36).substring(2) + Date.now().toString(36)));
+                            }
+                            setIsAuthReady(true); // Marca la autenticación como lista
+                            setIsLoading(false); // Oculta el spinner una vez que la autenticación está lista
+                        });
+
+                        // Limpia la suscripción al desmontar
+                        return () => unsubscribe();
+                    } catch (error) {
+                        console.error("Error al inicializar Firebase en el componente React:", error);
+                        showMessage("Error al inicializar la aplicación. Consulta la consola.", 'error');
+                        setIsLoading(false); // Oculta el spinner incluso en caso de error
+                    }
+                };
+
+                initializeApp();
+            }, []); // Un array de dependencia vacío significa que esto se ejecuta una vez al montar
+
+            // Efecto para manejar el historial del navegador (botones de retroceso/avance)
+            React.useEffect(() => {
+                const handlePopState = (event) => {
+                    if (event.state && event.state.page) {
+                        setCurrentPage(event.state.page);
+                        if (event.state.page === 'home' || event.state.page === 'explore') {
+                            if (dailyCallFrame) {
+                                dailyCallFrame.leave();
+                                setDailyCallFrame(null);
+                                setIsStreaming(false);
+                            }
+                        }
+                    } else {
+                        setCurrentPage('home');
+                        if (dailyCallFrame) {
+                            dailyCallFrame.leave();
+                            setDailyCallFrame(null);
+                            setIsStreaming(false);
+                        }
+                    }
+                };
+
+                window.addEventListener('popstate', handlePopState);
+                window.history.pushState({ page: currentPage }, document.title, null);
+                return () => {
+                    window.removeEventListener('popstate', handlePopState);
+                };
+            }, []);
+
+            React.useEffect(() => {
+                if (currentPage && (!window.history.state || window.history.state.page !== currentPage)) {
+                    window.history.pushState({ page: currentPage }, document.title, null);
+                }
+            }, [currentPage]);
+
+            React.useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target)) {
+                        setShowOptionsMenu(false);
+                    }
+                };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => {
+                    document.removeEventListener("mousedown", handleClickOutside);
+                };
+            }, [optionsMenuRef]);
+
+
+            React.useEffect(() => {
+                if (isAuthReady && db && currentPage === 'explore') {
+                    setIsLoading(true);
+                    const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
+                    const unsubscribe = window.onSnapshot(channelsColRef, (snapshot) => {
+                        const channelsData = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            name: doc.data().displayName || doc.id,
+                            createdAt: doc.data().createdAt,
+                            createdBy: doc.data().createdBy,
+                            creatorUserName: doc.data().creatorUserName,
+                            dailyCoRoomUrl: doc.data().dailyCoRoomUrl
+                        }));
+                        setAvailableChannels(channelsData);
+                        setIsLoading(false);
+                    }, (error) => {
+                        console.error("Error al obtener canales:", error);
+                        if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                            showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                        } else {
+                            showMessage("Error al cargar canales. Consulta la consola.", 'error');
+                        }
+                        setIsLoading(false);
+                    });
+
+                    return () => unsubscribe();
+                }
+            }, [isAuthReady, db, currentPage]);
+
+            React.useEffect(() => {
+                if (isAuthReady && db && activeChannel && currentPage === 'channel') {
+                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
+                    const q = window.query(messagesColRef, window.orderBy('timestamp'));
+
+                    const unsubscribe = window.onSnapshot(q, (snapshot) => {
+                        const messagesData = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setChatMessages(messagesData);
+                        scrollToBottom();
+                    }, (error) => {
+                        console.error("Error al obtener mensajes de chat:", error);
+                        if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                            showMessage("Error de conexión o permisos al cargar mensajes. Verifica las reglas de Firestore.", 'error');
+                        } else {
+                            showMessage("Error al cargar mensajes del chat. Consulta la consola.", 'error');
+                        }
+                    });
+
+                    return () => unsubscribe();
+                } else {
+                    setChatMessages([]);
+                }
+            }, [isAuthReady, db, activeChannel, currentPage]);
+
+            const handleConfirmUserName = async () => {
+                if (userName.trim() === '') {
+                    showMessage('Por favor, ingresa un nombre de usuario.', 'error');
+                    return;
+                }
+                if (!isAuthReady || !db || !userId) {
+                    console.warn("Firebase no está listo aún. No se puede guardar el nombre de usuario.");
+                    showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
+                    return;
+                }
+                setIsLoading(true);
+                try {
+                    const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+                    await window.setDoc(userProfileRef, { userName: userName.trim() }, { merge: true });
+                    localStorage.setItem('channelUserName', userName.trim());
+                    setUserNameConfirmed(true);
+                    showMessage('¡Nombre de usuario confirmado!', 'success');
+                } catch (error) {
+                    console.error("Error al guardar el nombre de usuario:", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                    } else {
+                        showMessage("Error al guardar el nombre de usuario. Inténtalo de nuevo.", 'error');
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleCreateChannel = async () => {
+                if (channelName.trim() === '') {
+                    showMessage('Por favor, ingresa un nombre para el canal.', 'error');
+                    if (channelInputRef.current) {
+                        channelInputRef.current.focus();
+                    }
+                    return;
+                }
+                if (!isAuthReady || !db || !userId) {
+                    console.warn("Firebase no está listo aún. Por favor, espera.");
+                    showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
+                    return;
+                }
+
+                const normalizedChannelName = channelName.trim().toLowerCase();
+                const originalChannelInput = channelName.trim();
+
+                setIsLoading(true);
+                try {
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
+                    const docSnap = await window.getDoc(channelDocRef);
+
+                    const dailyCoRoomUrl = `https://YOUR_DAILY_DOMAIN.daily.co/${normalizedChannelName}-video`;
+
+                    if (docSnap.exists()) {
+                        const existingChannelDisplayName = docSnap.data().displayName || normalizedChannelName;
+                        setActiveChannel(existingChannelDisplayName);
+                        setCurrentPage('channel');
+                        showMessage(`Te has unido al canal: ${existingChannelDisplayName}`, 'success');
+                    } else {
+                        await window.setDoc(channelDocRef, {
+                            name: normalizedChannelName,
+                            displayName: originalChannelInput,
+                            createdAt: new Date().toISOString(),
+                            createdBy: userId,
+                            creatorUserName: userName,
+                            dailyCoRoomUrl: dailyCoRoomUrl
+                        });
+                        setActiveChannel(originalChannelInput);
+                        setCurrentPage('channel');
+                        showMessage(`¡Canal "${originalChannelInput}" creado y te has unido!`, 'success');
+                    }
+                } catch (error) {
+                    console.error("Error al crear o unirse al canal:", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                    } else {
+                        showMessage("Error al crear o unirse al canal. Consulta la consola.", 'error');
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleJoinChannelFromExplore = (channelToJoin) => {
+                setActiveChannel(channelToJoin.name);
+                setCurrentPage('channel');
+                if (dailyCallFrame) {
+                    dailyCallFrame.leave();
+                    setDailyCallFrame(null);
+                    setIsStreaming(false);
+                }
+                showMessage(`Te has unido al canal: ${channelToJoin.name}`, 'success');
+            };
+
+            const handleSendMessage = async () => {
+                if (currentMessage.trim() === '') {
+                    return;
+                }
+                if (!isAuthReady || !db || !userId || !activeChannel || !userName) {
+                    console.warn("Firebase, usuario, canal o nombre de usuario no están listos. No se puede enviar el mensaje.");
+                    showMessage("No se pudo enviar el mensaje. La aplicación no está lista.", 'error');
+                    return;
+                }
+
+                const normalizedActiveChannel = activeChannel.toLowerCase();
+
+                try {
+                    const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
+                    await window.addDoc(messagesColRef, {
+                        text: currentMessage.trim(),
+                        senderId: userId,
+                        senderUserName: userName,
+                        timestamp: window.serverTimestamp(),
+                    });
+                    setCurrentMessage('');
+                    scrollToBottom();
+                } catch (error) {
+                    console.error("Error al enviar mensaje:", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Error de conexión o permisos al enviar mensaje. Verifica las reglas de Firestore.", 'error');
+                    } else {
+                        showMessage("Error al enviar mensaje. Consulta la consola.", 'error');
+                    }
+                }
+            };
+
+            const handleDeleteChannel = async (channelDisplayName) => {
+                const userConfirmed = await new Promise((resolve) => {
+                    const confirmModal = document.createElement('div');
+                    confirmModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                    confirmModal.innerHTML = `
+                        <div class="bg-white p-6 rounded-lg shadow-xl text-center">
+                            <p class="mb-4 text-lg">¿Estás seguro de que quieres eliminar el canal "${channelDisplayName}"? Esta acción es irreversible.</p>
+                            <button id="confirmDelete" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg mr-2">Sí, Eliminar</button>
+                            <button id="cancelDelete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                        </div>
+                    `;
+                    document.body.appendChild(confirmModal);
+
+                    document.getElementById('confirmDelete').onclick = () => {
+                        document.body.removeChild(confirmModal);
+                        resolve(true);
+                    };
+                    document.getElementById('cancelDelete').onclick = () => {
+                        document.body.removeChild(confirmModal);
+                        resolve(false);
+                    };
+                });
+
+                if (!userConfirmed) {
+                    return;
+                }
+
+                if (!isAuthReady || !db || !userId) {
+                    showMessage("Firebase no está listo o no tienes un ID de usuario. No se puede eliminar el canal.", 'error');
+                    return;
+                }
+
+                const normalizedChannelId = channelDisplayName.toLowerCase();
+
+                setIsLoading(true);
+                try {
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelId);
+                    const docSnap = await window.getDoc(channelDocRef);
+
+                    if (docSnap.exists() && docSnap.data().createdBy === userId) {
+                        const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`);
+                        const messagesSnapshot = await window.getDocs(messagesColRef);
+                        const deletePromises = [];
+                        messagesSnapshot.forEach(msgDoc => {
+                            deletePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`, msgDoc.id)));
+                        });
+                        await Promise.all(deletePromises);
+
+                        await window.deleteDoc(channelDocRef);
+                        showMessage(`Canal "${channelDisplayName}" eliminado con éxito.`, 'success');
+                    } else {
+                        showMessage("No tienes permiso para eliminar este canal o el canal no existe.", 'error');
+                    }
+                } catch (error) {
+                    console.error("Error al eliminar el canal:", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                    } else {
+                        showMessage("Error al eliminar el canal. Consulta la consola.", 'error');
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+
+            const handleToggleCamera = async () => {
+                if (!activeChannel || !userId) {
+                    showMessage("No hay un canal activo o el usuario no está autenticado.", 'error');
+                    return;
+                }
+
+                if (dailyCallFrame && isStreaming) {
+                    dailyCallFrame.leave();
+                    showMessage("Cámara apagada.", 'info');
+                } else {
+                    setIsStreaming(true);
+                    setDailyError(null);
+                    setIsLoading(true);
+
+                    try {
+                        const normalizedChannelName = activeChannel.toLowerCase();
+                        const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
+                        const docSnap = await window.getDoc(channelDocRef);
+
+                        if (!docSnap.exists() || !docSnap.data().dailyCoRoomUrl) {
+                            showMessage("No se encontró URL de Daily.co para este canal. Asegúrate de crearla primero (editando la URL de Daily.co en el código).", 'error');
+                            setIsStreaming(false);
+                            setIsLoading(false);
+                            return;
+                        }
+
+                        const dailyCoRoomUrl = docSnap.data().dailyCoRoomUrl;
+                        const videoContainerElement = document.getElementById('daily-video-container');
+
+                        if (!videoContainerElement) {
+                            showMessage("Error: No se encontró el contenedor de video Daily.co. Verifica el HTML.", 'error');
+                            setIsStreaming(false);
+                            setIsLoading(false);
+                            return;
+                        }
+
+                        const call = window.DailyIframe.createFrame({
+                            parent: videoContainerElement,
+                            showLeaveButton: true,
+                            showParticipantsBar: false,
+                            iframeStyle: {
+                                position: 'relative',
+                                width: '100%',
+                                height: '100%',
+                                border: '0',
+                            },
+                        });
+
+                        setDailyCallFrame(call);
+
+                        await call.join({ url: dailyCoRoomUrl, userName: userName || userId });
+                        showMessage("Cámara encendida. ¡Estás transmitiendo!", 'success');
+
+
+                        call.on('joined-meeting', () => {
+                            console.log('Daily.co: Joined meeting');
+                            if (videoContainerElement) {
+                                videoContainerElement.classList.remove('hidden');
+                            }
+                            setIsLoading(false);
+                        });
+
+                        call.on('left-meeting', () => {
+                            console.log('Daily.co: Left meeting');
+                            setIsStreaming(false);
+                            setDailyCallFrame(null);
+                            showMessage("La transmisión ha terminado.", 'info');
+                            if (videoContainerElement) {
+                                videoContainerElement.classList.add('hidden');
+                            }
+                            if (call.iframe && call.iframe.parentNode) {
+                                call.iframe.parentNode.removeChild(call.iframe);
+                            }
+                        });
+
+                        call.on('error', (e) => {
+                            console.error('Daily.co Error:', e);
+                            setDailyError(e);
+                            showMessage(`Error de video: ${e.message}`, 'error');
+                            setIsStreaming(false);
+                            if (call.iframe && call.iframe.parentNode) {
+                                call.iframe.parentNode.removeChild(call.iframe);
+                            }
+                            if (videoContainerElement) {
+                                videoContainerElement.classList.add('hidden');
+                            }
+                            setIsLoading(false);
+                        });
+
+                    } catch (error) {
+                        console.error("Error al iniciar la cámara con Daily.co:", error);
+                        setDailyError(error);
+                        setIsStreaming(false);
+                        showMessage(`Error al iniciar la cámara: ${error.message}`, 'error');
+                        setIsLoading(false);
+                    }
+                }
+            };
+
+            React.useEffect(() => {
+                return () => {
+                    if (dailyCallFrame) {
+                        dailyCallFrame.leave();
+                    }
+                };
+            }, [dailyCallFrame]);
+
+            const copyToClipboard = (text) => {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    showMessage(`"${text}" copiado al portapapeles!`, 'success');
+                } catch (err) {
+                    console.error('Error al copiar al portapapeles:', err);
+                    showMessage('Error al copiar al portapapeles.', 'error');
+                }
+                document.body.removeChild(textarea);
+            };
+
+            const handleAttachFile = () => {
+                if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                }
+                setShowOptionsMenu(false);
+            };
+
+            const onFileSelected = async (event) => {
+                const file = event.target.files[0];
+                if (!file) {
+                    return;
+                }
+
+                if (!isAuthReady || !db || !userId || !activeChannel) {
+                    showMessage("La aplicación no está lista para subir archivos. Inténtalo de nuevo.", 'error');
+                    return;
+                }
+
+                setIsLoading(true);
+
+                // --- Configuración de Cloudinary (REEMPLAZA ESTOS CON LOS TUYOS) ---
+                const cloudName = 'dq527zvti'; // Tu nombre de Cloudinary Cloud
+                const unsignedUploadPreset = 'jlchannel'; // El preset de carga sin firmar que creaste en Cloudinary
+                // -------------------------------------------------------------
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', unsignedUploadPreset);
+
+                try {
+                    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        console.error("Error al subir el archivo a Cloudinary:", errorData);
+                        showMessage(`Error al subir el archivo: ${errorData.error.message || 'Error desconocido'}`, 'error');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const downloadURL = data.secure_url; // URL HTTPS del archivo subido
+                    console.log('Archivo disponible en Cloudinary:', downloadURL);
+
+                    // Envía la URL de Cloudinary a Firestore como un mensaje
+                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
+                    await window.addDoc(messagesColRef, {
+                        text: downloadURL, // Envía la URL como contenido del mensaje
+                        senderId: userId,
+                        senderUserName: userName,
+                        timestamp: window.serverTimestamp(),
+                        fileUrl: downloadURL, // Opcionalmente, almacena la URL en un campo separado
+                        fileName: file.name,
+                        fileType: file.type,
+                    });
+
+                    setCurrentMessage(''); // Borra la entrada del mensaje
+                    showMessage('Archivo subido con éxito y enviado al chat.', 'success'); //Cloudinary
+                    scrollToBottom();
+
+                } catch (error) {
+                    console.error("Error en la subida a Cloudinary (catch general):", error);
+                    showMessage(`Error al iniciar la subida: ${error.message || 'Error desconocido'}`, 'error');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+
+            const renderHomePage = () => (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-600 to-blue-500 p-4 font-inter">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
+                        <h1 className="text-4xl font-extrabold text-gray-800 mb-6">CHANNEL</h1>
+
+                        <div className="mb-6">
+                            <label htmlFor="username-input" className="block text-gray-700 text-sm font-bold mb-2">
+                                Tu Nombre de Usuario:
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    id="username-input"
+                                    type="text"
+                                    placeholder="Nombre de usuario"
+                                    className="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                                    value={userName}
+                                    onChange={(e) => {
+                                        setUserName(e.target.value);
+                                        if (userNameConfirmed) {
+                                            setUserNameConfirmed(false);
+                                        }
+                                    }}
+                                    disabled={userNameConfirmed}
+                                />
+                                {!userNameConfirmed && (
+                                    <button
+                                        onClick={handleConfirmUserName}
+                                        className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
+                                    >
+                                        Confirmar
+                                    </button>
+                                )}
+                                {userNameConfirmed && (
+                                    <button
+                                        onClick={() => setUserNameConfirmed(false)}
+                                        className="bg-gray-400 hover:bg-400 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
+                                    >
+                                        Editar
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="mb-6">
+                            <input
+                                id="channel-name-input"
+                                ref={channelInputRef}
+                                type="text"
+                                placeholder="Nombre de canal"
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                                value={channelName}
+                                onChange={(e) => setChannelName(e.target.value)}
+                                onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleCreateChannel();
+                                    }
+                                }}
+                                disabled={!userNameConfirmed}
+                            />
+                        </div>
+
+                        <button
+                            onClick={handleCreateChannel}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mb-4"
+                            disabled={!userNameConfirmed}
+                        >
+                            Ingresar
+                        </button>
+
+                        <button
+                            onClick={() => setCurrentPage('explore')}
+                            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl"
+                            disabled={!userNameConfirmed}
+                        >
+                            Explorar Canales
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const renderChannelPage = () => (
+                <div className="relative flex flex-col items-center min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 font-inter">
+                    <div className="h-full bg-white p-4 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-6 mb-2 pb-1 relative">
+                        <h1
+                            className="text-4xl font-extrabold text-gray-800 mb-2 cursor-pointer"
+                            onClick={() => copyToClipboard(activeChannel)}
+                        >
+                            Canal: <span className="text-blue-600">{activeChannel}</span>
+                        </h1>
+                        <p className="text-lg text-gray-600 mb-2">Usuario: <span className="font-bold text-purple-600">{userName}</span></p>
+
+                        <div className="absolute top-4 right-4" ref={optionsMenuRef}>
+                            <button
+                                onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+                                aria-label="Opciones del canal"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-6 w-6"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <circle cx="12" cy="12" r="1"></circle>
+                                    <circle cx="12" cy="5" r="1"></circle>
+                                    <circle cx="12" cy="19" r="1"></circle>
+                                </svg>
+                            </button>
+                            {showOptionsMenu && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { handleToggleCamera(); setShowOptionsMenu(false); }}>Stream 🎥</button>
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Adjuntar Archivo 📎</button>
+                                    <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => setShowOptionsMenu(false)}>Opción 3</a>
+                                </div>
+                            )}
+                        </div>
+
+                        <div id="daily-video-container" className={`relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-4 ${isStreaming ? 'block' : 'hidden'}`}>
+                        </div>
+
+                        <div className="mb-1 w-full bg-gray-100 p-1 rounded-xl shadow-inner border border-gray-200">
+                            <div className="h-[70vh] md:h-[66vh] bg-white rounded-lg p-2 overflow-y-auto border border-gray-300 mb-1 flex flex-col" style={{ minHeight: '100px' }}>
+                                {chatMessages.length > 0 ? (
+                                    chatMessages.map((msg) => (
+                                        <div key={msg.id} className={`mb-2 p-2 rounded-lg ${msg.senderId === userId ? 'bg-blue-100 self-end text-right' : 'bg-gray-200 self-start text-left'}`} style={{ maxWidth: '80%' }}>
+                                            <p className="font-semibold text-xs">{msg.senderId === userId ? 'Tú' : msg.senderUserName}</p>
+                                            {/* Conditionally render content based on if it's a file URL */}
+                                            {msg.fileUrl ? (
+                                                // Check if the file type is an image
+                                                msg.fileType && msg.fileType.startsWith('image/') ? (
+                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block">
+                                                        <img src={msg.fileUrl} alt={msg.fileName || 'Imagen adjunta'} className="max-w-xs max-h-32 rounded-lg object-contain mb-1" />
+                                                        <span className="text-blue-600 underline text-sm md:text-base">
+                                                            🖼️ {msg.fileName || 'Imagen Adjunta'}
+                                                        </span>
+                                                    </a>
+                                                ) : // Check if the file type is audio
+                                                msg.fileType && msg.fileType.startsWith('audio/') ? (
+                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block w-full max-w-sm">
+                                                        <audio controls src={msg.fileUrl} className="w-full mb-1"></audio>
+                                                        <span className="text-blue-600 underline text-sm md:text-base">
+                                                            🎵 {msg.fileName || 'Audio Adjunto'}
+                                                        </span>
+                                                    </a>
+                                                ) : (
+                                                    // Otherwise, render as a general file link
+                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
+                                                        📎 {msg.fileName || 'Archivo Adjunto'}
+                                                    </a>
+                                                )
+                                            ) : (
+                                                <p className="text-sm md:text-base text-gray-800">{msg.text}</p>
+                                            )}
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Enviando...'}
+                                            </p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-500 italic m-auto">Sé el primero en enviar un mensaje.</p>
+                                )}
+                                <div ref={chatMessagesEndRef} />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Escribe tu mensaje..."
+                                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                value={currentMessage}
+                                onChange={(e) => setCurrentMessage(e.target.value)}
+                                onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleSendMessage();
+                                    }
+                                }}
+                                disabled={!isAuthReady || !db || !userId}
+                            />
+                            <input
+                                type="file"
+                                id="file-upload-input"
+                                ref={fileInputRef}
+                                style={{ display: 'none' }}
+                                onChange={onFileSelected}
+                            />
+                        </div>
+
+                        {dailyError && (
+                            <div className="mt-4 text-red-500">
+                                Error de Daily.co: {dailyError.message || "Un error desconocido ocurrió."}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            const renderExplorePage = () => (
+                <div className="flex flex-col items-center justify-start min-h-screen bg-gradient-to-br from-teal-500 to-cyan-600 p-4 font-inter">
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8">
+                        <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Explorar Canales</h1>
+                        <p className="text-lg text-gray-600 mb-8"> </p>
+
+                        {availableChannels.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {availableChannels.map((channel) => (
+                                    <div key={channel.id} className="bg-gray-100 p-4 rounded-lg shadow-md flex flex-col items-center justify-between">
+                                        <h3 className="text-xl font-semibold text-gray-800 mb-2">{channel.name}</h3>
+                                        <p className="text-sm text-gray-600 mb-3">
+                                            Creado por: {channel.creatorUserName || 'Desconocido'}
+                                        </p>
+                                        <button
+                                            onClick={() => handleJoinChannelFromExplore(channel)}
+                                            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 mb-2"
+                                        >
+                                            Unirse
+                                        </button>
+                                        {userId === channel.createdBy && (
+                                            <button
+                                                onClick={() => handleDeleteChannel(channel.name)}
+                                                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300"
+                                            >
+                                                Eliminar Canal
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 italic">  </p>
+                        )}
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <MessageDisplay message={message} type={messageType} onClose={() => setMessage(null)} />
+                    {isLoading && <LoadingSpinner />}
+                    {currentPage === 'home' ? renderHomePage() : (currentPage === 'channel' ? renderChannelPage() : renderExplorePage())}
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
