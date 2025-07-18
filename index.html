@@ -247,6 +247,7 @@
                 window.addEventListener('beforeinstallprompt', handler);
 
                 // Verifica si la aplicación ya está instalada (en modo standalone)
+                // Esto es una verificación inicial al cargar la página
                 if (window.matchMedia('(display-mode: standalone)').matches) {
                     setIsPwaInstalled(true);
                 }
