@@ -1,4 +1,4 @@
-const CACHE_NAME = 'channel-app-v2.1'; // <--- ¡IMPORTANTE! Cambia esto con cada nueva implementación principal
+const CACHE_NAME = 'channel-app-v2.2'; // <--- ¡IMPORTANTE! Cambia esto con cada nueva implementación principal
 const urlsToCache = [
     '/channel/index.html', // Ruta actualizada
     '/channel/manifest.json', // Ruta actualizada
