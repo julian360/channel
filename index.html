@@ -58,23 +58,9 @@
         window.orderBy = orderBy;
         window.getDocs = getDocs; // Expone getDocs para la eliminación de subcolecciones
         window.deleteDoc = deleteDoc; // Expone deleteDoc para la eliminación de canales
+        // NUEVO: Exponer signInAnonymously globalmente
+        window.signInAnonymously = signInAnonymously;
 
-
-        // Inicia sesión de forma anónima si no se proporciona un token de autenticación inicial.
-        // Esto asegura que un usuario siempre esté autenticado para las operaciones de Firestore.
-        onAuthStateChanged(window.auth, async (user) => {
-            if (!user) {
-                try {
-                    if (window.__initial_auth_token) {
-                        await signInWithCustomToken(window.auth, window.__initial_auth_token);
-                    } else {
-                        await signInAnonymously(window.auth);
-                    }
-                } catch (error) {
-                    console.error("Error durante el inicio de sesión anónimo:", error);
-                }
-            }
-        });
 
         // PWA: Registra el Service Worker con la ruta corregida para tu repositorio 'channel'
         if ('serviceWorker' in navigator) {
@@ -216,6 +202,11 @@
             // PWA: Estado para saber si la PWA ya está instalada
             const [isPwaInstalled, setIsPwaInstalled] = React.useState(false);
 
+            // NUEVO: Estados para el modo Tigre
+            const [showTigreCodeInput, setShowTigreCodeInput] = React.useState(false); // Controla la visibilidad del input de código
+            const [tigreCode, setTigreCode] = React.useState(''); // Almacena el código ingresado
+            const [isTigre, setIsTigre] = React.useState(false); // Indica si el modo Tigre está activo
+
 
             // Ref para el campo de entrada del nombre del canal
             const channelInputRef = React.useRef(null);
@@ -242,30 +233,26 @@
 
 
             // Función para mostrar un mensaje
-            const showMessage = (msg, type = 'success') => {
+            const showMessage = React.useCallback((msg, type = 'success') => {
                 setMessage(msg);
                 setMessageType(type);
                 setTimeout(() => setMessage(null), 3000); // Borra el mensaje después de 3 segundos
-            };
+            }, []);
 
             // NUEVO: Función para desplazarse al final de los mensajes de chat
-            const scrollToBottom = () => {
+            const scrollToBottom = React.useCallback(() => {
                 chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            };
+            }, []);
 
             // PWA: Maneja el evento beforeinstallprompt
             React.useEffect(() => {
                 const handler = (e) => {
-                    // Previene que el navegador muestre su propio prompt de instalación
                     e.preventDefault();
-                    // Almacena el evento para poder dispararlo más tarde
                     setDeferredPrompt(e);
                     console.log('beforeinstallprompt event fired!');
                 };
                 window.addEventListener('beforeinstallprompt', handler);
 
-                // Verifica si la aplicación ya está instalada (en modo standalone)
-                // Esto es una verificación inicial al cargar la página
                 if (window.matchMedia('(display-mode: standalone)').matches) {
                     setIsPwaInstalled(true);
                 }
@@ -277,61 +264,94 @@
             React.useEffect(() => {
                 const handleAppInstalled = () => {
                     setIsPwaInstalled(true);
-                    setDeferredPrompt(null); // Limpia el prompt ya que la app está instalada
+                    setDeferredPrompt(null);
                     showMessage('Instalando CHANNEL App...', 'success');
                     console.log('PWA was installed');
                 };
                 window.addEventListener('appinstalled', handleAppInstalled);
                 return () => window.removeEventListener('appinstalled', handleAppInstalled);
-            }, []);
+            }, [showMessage]);
 
-            // Inicializa Firebase y maneja la autenticación
+            // 1. Initial Firebase setup and user authentication, and profile loading
             React.useEffect(() => {
-                const initializeApp = async () => {
-                    try {
-                        // Los servicios de Firebase ahora están disponibles en el objeto window
-                        setDb(window.db);
-                        setAuth(window.auth);
+                setDb(window.db);
+                setAuth(window.auth);
 
-                        // Carga el nombre de usuario del almacenamiento local (caché) o genera uno aleatorio
-                        const storedUserName = localStorage.getItem('channelUserName');
-                        if (storedUserName) {
-                            setUserName(storedUserName);
-                            setUserNameConfirmed(true); // Si se encuentra en caché, se considera confirmado
-                        } else {
-                            // Si no hay nombre almacenado, genera uno aleatorio y confírmalo por defecto
-                            const newRandomName = generateRandomUserName();
-                            setUserName(newRandomName);
-                            localStorage.setItem('channelUserName', newRandomName); // Guarda el nombre aleatorio en caché
-                            setUserNameConfirmed(true); // Confirmed by default
+                const unsubscribeAuth = window.onAuthStateChanged(window.auth, async (user) => {
+                    let currentUserId = null;
+                    if (user) {
+                        currentUserId = user.uid;
+                        setUserId(currentUserId);
+                        console.log("DEBUG PROFUNDO: onAuthStateChanged - userId establecido:", currentUserId);
+                    } else {
+                        console.log("DEBUG PROFUNDO: onAuthStateChanged - Usuario no autenticado, intentando signInAnonymously si es necesario.");
+                        try {
+                            const userCredential = await window.signInAnonymously(window.auth);
+                            currentUserId = userCredential.user.uid;
+                            setUserId(currentUserId);
+                            console.log("DEBUG PROFUNDO: onAuthStateChanged - userId ANÓNIMO establecido después de signIn:", currentUserId);
+                        } catch (anonError) {
+                            console.error("DEBUG PROFUNDO: Error durante el inicio de sesión anónimo en onAuthStateChanged:", anonError);
+                            // Fallback to a client-side generated ID if anonymous sign-in fails
+                            currentUserId = (Math.random().toString(36).substring(2) + Date.now().toString(36));
+                            setUserId(currentUserId);
+                            showMessage("No se pudo autenticar al usuario. Usando ID de respaldo. Algunas funciones podrían estar limitadas.", 'error');
+                            console.log("DEBUG PROFUNDO: onAuthStateChanged - userId de respaldo establecido debido a error de inicio de sesión:", currentUserId);
                         }
-
-                        // Escucha los cambios en el estado de autenticación y establece userId
-                        const unsubscribe = window.onAuthStateChanged(window.auth, (user) => {
-                            if (user) {
-                                setUserId(user.uid);
-                            } else {
-                                // Si el usuario no está autenticado, genera un UUID aleatorio como userId de respaldo
-                                // Nota: crypto.randomUUID() podría no estar disponible en todos los navegadores antiguos
-                                setUserId(window.auth.currentUser?.uid || (Math.random().toString(36).substring(2) + Date.now().toString(36)));
-                            }
-                            setIsAuthReady(true); // Marca la autenticación como lista
-                            setIsLoading(false); // Oculta el spinner una vez que la autenticación está lista
-                        });
-
-                        // Limpia la suscripción al desmontar
-                        return () => unsubscribe();
-                    } catch (error) {
-                        console.error("Error al inicializar Firebase en el componente React:", error);
-                        showMessage("Error al inicializar la aplicación. Consulta la consola.", 'error');
-                        setIsLoading(false); // Oculta el spinner incluso en caso de error
                     }
-                };
 
-                initializeApp();
-            }, []); // Un array de dependencia vacío significa que esto se ejecuta una vez al montar
+                    // *** MODIFICACIÓN CLAVE AQUÍ: Asegurarse de que db y userId estén disponibles antes de interactuar con Firestore ***
+                    if (currentUserId && window.db) {
+                        const userProfileRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${currentUserId}/profile`, 'userProfile');
+                        try {
+                            console.log("DEBUG PROFUNDO: Intentando leer/crear perfil de usuario en la ruta:", userProfileRef.path);
+                            const userProfileSnap = await window.getDoc(userProfileRef);
 
-            // Efecto para manejar el historial del navegador (botones de retroceso/avance)
+                            let profileData;
+                            if (userProfileSnap.exists()) {
+                                profileData = userProfileSnap.data();
+                                console.log(`DEBUG PROFUNDO: Perfil de usuario cargado para ${currentUserId}.`);
+                            } else {
+                                // If profile doesn't exist, create it with a new random one
+                                const userNameToUse = generateRandomUserName();
+                                profileData = {
+                                    userName: userNameToUse,
+                                    isTigreActive: false
+                                };
+                                await window.setDoc(userProfileRef, profileData);
+                                // No need to set localStorage here, userName state will be set below
+                                console.log(`DEBUG PROFUNDO: Perfil de usuario creado para ${currentUserId}.`);
+                            }
+
+                            // Update React states based on the loaded/created profile data
+                            setUserName(profileData.userName);
+                            setUserNameConfirmed(true); // User name is confirmed if profile exists
+                            setIsTigre(profileData.isTigreActive === true); // Ensure boolean true
+
+                            // IMPORTANT: showTigreCodeInput is NOT set here anymore.
+                            // It will be triggered by handleConfirmUserName if userName is 'Julian360'.
+
+                        } catch (profileError) {
+                            console.error("DEBUG PROFUNDO: Error al cargar/crear el perfil de usuario desde Firestore (dentro de onAuthStateChanged):", profileError);
+                            setIsTigre(false);
+                            setShowTigreCodeInput(false); // Ensure this is false on error
+                            showMessage("Error al cargar tu perfil de usuario. Consulta la consola.", 'error');
+                        }
+                    } else {
+                        // Fallback if currentUserId or db is not available, ensure Tigre mode is off
+                        setIsTigre(false);
+                        setShowTigreCodeInput(false);
+                        console.log("DEBUG PROFUNDO: No hay userId o db disponible para cargar el perfil. isTigre establecido a false.");
+                    }
+                    setIsAuthReady(true);
+                    setIsLoading(false);
+                    console.log("DEBUG PROFUNDO: isAuthReady establecido a true.");
+                });
+
+                return () => unsubscribeAuth();
+            }, [showMessage]); // Add showMessage to dependency array
+
+
             React.useEffect(() => {
                 const handlePopState = (event) => {
                     if (event.state && event.state.page) {
@@ -358,7 +378,7 @@
                 return () => {
                     window.removeEventListener('popstate', handlePopState);
                 };
-            }, []);
+            }, [currentPage, dailyCallFrame]);
 
             React.useEffect(() => {
                 if (currentPage && (!window.history.state || window.history.state.page !== currentPage)) {
@@ -372,7 +392,6 @@
                         setShowOptionsMenu(false);
                         setShowActivityPanel(false);
                     }
-                    // NUEVO: Cerrar el menú de exploración si se hace clic fuera
                     if (exploreMenuRef.current && !exploreMenuRef.current.contains(event.target)) {
                         setShowExploreMenu(false);
                     }
@@ -383,78 +402,79 @@
                 };
             }, [optionsMenuRef, exploreMenuRef]);
 
+            const fetchChannels = React.useCallback(async () => {
+                if (!isAuthReady || !db) {
+                    console.log("DEBUG PROFUNDO: fetchChannels - Firebase no listo o db es null. Saliendo.");
+                    return;
+                }
+                setIsLoading(true);
+                const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
+                const q = window.query(channelsColRef);
+
+                try {
+                    const snapshot = await window.getDocs(q);
+                    const channelsData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        name: doc.data().displayName || doc.id,
+                        createdAt: doc.data().createdAt,
+                        createdBy: doc.data().createdBy,
+                        creatorUserName: doc.data().creatorUserName,
+                        dailyCoRoomUrl: doc.data().dailyCoRoomUrl,
+                        lastActivity: doc.data().lastActivity
+                    }));
+
+                    let processedChannels = [...channelsData];
+
+                    if (sortOption === 'activity') {
+                        processedChannels.sort((a, b) => {
+                            const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
+                            const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
+                            return dateB.getTime() - dateA.getTime();
+                        });
+                    } else if (sortOption === 'recent') {
+                        processedChannels.sort((a, b) => {
+                            const dateA = new Date(a.createdAt);
+                            const dateB = new Date(b.createdAt);
+                            return dateB.getTime() - dateA.getTime();
+                        });
+                    }
+
+                    if (searchQuery) {
+                        processedChannels = processedChannels.filter(channel =>
+                            channel.name.toLowerCase().includes(searchQuery.toLowerCase())
+                        );
+                    }
+
+                    setAvailableChannels(processedChannels);
+                    console.log("DEBUG PROFUNDO: Canales obtenidos y procesados:", processedChannels);
+                } catch (error) {
+                    console.error("DEBUG PROFUNDO: Error al obtener canales:", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                    } else {
+                        showMessage("Error al cargar canales. Consulta la consola.", 'error');
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [isAuthReady, db, sortOption, searchQuery, showMessage, setIsLoading, setAvailableChannels]);
+
 
             React.useEffect(() => {
-                const fetchChannels = async () => {
-                    if (!isAuthReady || !db) {
-                        return;
-                    }
-                    setIsLoading(true);
-                    const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
-                    const q = window.query(channelsColRef);
-
-                    try {
-                        const snapshot = await window.getDocs(q);
-                        const channelsData = snapshot.docs.map(doc => ({
-                            id: doc.id,
-                            name: doc.data().displayName || doc.id,
-                            createdAt: doc.data().createdAt,
-                            createdBy: doc.data().createdBy,
-                            creatorUserName: doc.data().creatorUserName,
-                            dailyCoRoomUrl: doc.data().dailyCoRoomUrl,
-                            lastActivity: doc.data().lastActivity
-                        }));
-
-                        let processedChannels = [...channelsData];
-
-                        if (sortOption === 'activity') {
-                            processedChannels.sort((a, b) => {
-                                const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
-                                const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
-                                return dateB.getTime() - dateA.getTime();
-                            });
-                        } else if (sortOption === 'recent') {
-                            processedChannels.sort((a, b) => {
-                                const dateA = new Date(a.createdAt);
-                                const dateB = new Date(b.createdAt);
-                                return dateB.getTime() - dateA.getTime();
-                            });
-                        }
-
-                        if (searchQuery) {
-                            processedChannels = processedChannels.filter(channel =>
-                                channel.name.toLowerCase().includes(searchQuery.toLowerCase())
-                            );
-                        }
-
-                        setAvailableChannels(processedChannels);
-                    } catch (error) {
-                        console.error("Error al obtener canales:", error);
-                        if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                            showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
-                        } else {
-                            showMessage("Error al cargar canales. Consulta la consola.", 'error');
-                        }
-                    } finally {
-                        setIsLoading(false);
-                    }
-                };
-
                 let intervalId;
                 if (currentPage === 'explore') {
-                    fetchChannels(); // Llamada inicial al entrar en la página
-                    intervalId = setInterval(fetchChannels, 60000); // Refrescar cada 60 segundos
+                    fetchChannels();
+                    intervalId = setInterval(fetchChannels, 60000);
                 }
 
                 return () => {
                     if (intervalId) {
-                        clearInterval(intervalId); // Limpiar el intervalo al salir de la página
+                        clearInterval(intervalId);
                     }
                 };
-            }, [isAuthReady, db, currentPage, sortOption, searchQuery]);
+            }, [currentPage, fetchChannels]);
 
 
-            // NUEVO: Efecto para enfocar el input de búsqueda cuando aparece
             React.useEffect(() => {
                 if (showSearchInput && searchInputRef.current) {
                     searchInputRef.current.focus();
@@ -475,8 +495,9 @@
                         }));
                         setChatMessages(messagesData);
                         scrollToBottom();
+                        console.log("DEBUG PROFUNDO: Mensajes de chat actualizados:", messagesData);
                     }, (error) => {
-                        console.error("Error al obtener mensajes de chat:", error);
+                        console.error("DEBUG PROFUNDO: Error al obtener mensajes de chat:", error);
                         if (error.code === 'unavailable' || error.code === 'permission-denied') {
                             showMessage("Error de conexión o permisos al cargar mensajes. Verifica las reglas de Firestore.", 'error');
                         } else {
@@ -484,7 +505,6 @@
                         }
                     });
 
-                    // NUEVO: Listener para miembros del canal
                     const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/members`);
                     const unsubscribeMembers = window.onSnapshot(membersColRef, (snapshot) => {
                         const membersData = snapshot.docs.map(doc => ({
@@ -492,44 +512,62 @@
                             ...doc.data()
                         }));
                         setChannelMembers(membersData);
+                        console.log("DEBUG PROFUNDO: Miembros del canal actualizados:", membersData);
                     }, (error) => {
-                        console.error("Error al obtener miembros del canal:", error);
+                        console.error("DEBUG PROFUNDO: Error al obtener miembros del canal:", error);
                     });
 
 
                     return () => {
                         unsubscribe();
-                        unsubscribeMembers(); // Limpia también el listener de miembros
+                        unsubscribeMembers();
                     };
                 } else {
                     setChatMessages([]);
-                    setChannelMembers([]); // Limpia también los miembros
+                    setChannelMembers([]);
+                    console.log("DEBUG PROFUNDO: Limpiando mensajes y miembros del canal.");
                 }
-            }, [isAuthReady, db, activeChannel, currentPage]);
+            }, [isAuthReady, db, activeChannel, currentPage, showMessage, scrollToBottom]);
 
-            const handleConfirmUserName = async () => {
+            const handleConfirmUserName = React.useCallback(async () => {
                 if (userName.trim() === '') {
                     showMessage('Por favor, ingresa un nombre de usuario.', 'error');
                     return;
                 }
-                if (userName.trim().length > 48) { // Max length check for username
+                if (userName.trim().length > 48) {
                     showMessage('El nombre de usuario no puede exceder los 48 caracteres.', 'error');
                     return;
                 }
                 if (!isAuthReady || !db || !userId) {
-                    console.warn("Firebase no está listo aún. No se puede guardar el nombre de usuario.");
+                    console.warn("DEBUG PROFUNDO: handleConfirmUserName - Firebase no está listo o db/userId es null.");
                     showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
                     return;
                 }
                 setIsLoading(true);
                 try {
                     const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
-                    await window.setDoc(userProfileRef, { userName: userName.trim() }, { merge: true });
-                    localStorage.setItem('channelUserName', userName.trim());
+                    let profileUpdate = { userName: userName.trim() };
+
+                    // Only set isTigreActive to false here, it will be set to true by handleTigreCodeSubmit
+                    profileUpdate.isTigreActive = false;
+
+                    console.log("DEBUG PROFUNDO: handleConfirmUserName - Guardando perfil de usuario:", { userId: userId, userName: userName.trim(), isTigreActive: profileUpdate.isTigreActive });
+                    await window.setDoc(userProfileRef, profileUpdate, { merge: true });
+                    // No need to set localStorage here, userName state is already updated
                     setUserNameConfirmed(true);
                     showMessage('¡Nombre de usuario confirmado!', 'success');
+                    setIsTigre(profileUpdate.isTigreActive); // This will be false here
+
+                    // NEW LOGIC: Only show Tigre code input IF userName is Julian360 AND isTigre is NOT active
+                    if (userName.trim() === 'Julian360' && !profileUpdate.isTigreActive) {
+                        setShowTigreCodeInput(true);
+                        console.log("DEBUG PROFUNDO: handleConfirmUserName - Usuario es Julian360 y modo Tigre inactivo. Mostrando input de código Tigre.");
+                    } else {
+                        setShowTigreCodeInput(false);
+                        console.log("DEBUG PROFUNDO: handleConfirmUserName - Usuario NO es Julian360 o modo Tigre activo. Ocultando input de código Tigre.");
+                    }
                 } catch (error) {
-                    console.error("Error al guardar el nombre de usuario:", error);
+                    console.error("DEBUG PROFUNDO: Error al guardar el nombre de usuario:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
                         showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
                     } else {
@@ -538,9 +576,40 @@
                 } finally {
                     setIsLoading(false);
                 }
-            };
+            }, [userName, isAuthReady, db, userId, showMessage, setIsLoading, setShowTigreCodeInput, setIsTigre, setUserNameConfirmed]);
 
-            const handleCreateChannel = async () => {
+            const handleTigreCodeSubmit = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - userId actual:", userId);
+                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Código ingresado:", tigreCode);
+                if (parseInt(tigreCode) === (15476 * 1000 + 767)) {
+                    setIsTigre(true);
+                    showMessage('Modo Tigre activado. Ahora puedes eliminar cualquier canal.', 'success');
+                    setShowTigreCodeInput(false);
+
+                    if (db && userId) {
+                        try {
+                            const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+                            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Intentando activar modo Tigre en Firestore para userId:", userId, "con isTigreActive: true (booleano).");
+                            await window.setDoc(userProfileRef, { isTigreActive: true }, { merge: true });
+                            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Modo Tigre activado en Firestore para el usuario:", userId);
+                            const updatedProfileSnap = await window.getDoc(userProfileRef);
+                            if (updatedProfileSnap.exists()) {
+                                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Perfil de usuario LEÍDO después de la actualización:", updatedProfileSnap.data());
+                            }
+                        } catch (error) {
+                            console.error("DEBUG PROFUNDO: handleTigreCodeSubmit - Error al activar el modo Tigre en Firestore:", error);
+                            showMessage("Error al guardar el estado de Tigre. Inténtalo de nuevo.", 'error');
+                        }
+                    }
+
+                } else {
+                    showMessage('Código incorrecto. Inténtalo de nuevo.', 'error');
+                    setTigreCode('');
+                    console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Código incorrecto.");
+                }
+            }, [tigreCode, showMessage, setIsTigre, setShowTigreCodeInput, setTigreCode, db, userId]);
+
+            const handleCreateChannel = React.useCallback(async () => {
                 if (channelName.trim() === '') {
                     showMessage('Por favor, ingresa un nombre para el canal.', 'error');
                     if (channelInputRef.current) {
@@ -548,12 +617,12 @@
                     }
                     return;
                 }
-                if (channelName.trim().length > 128) { // Max length check for channel name
+                if (channelName.trim().length > 128) {
                     showMessage('El nombre del canal no puede exceder los 128 caracteres.', 'error');
                     return;
                 }
                 if (!isAuthReady || !db || !userId) {
-                    console.warn("Firebase no está listo aún. Por favor, espera.");
+                    console.warn("DEBUG PROFUNDO: handleCreateChannel - Firebase no está listo aún. Por favor, espera.");
                     showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
                     return;
                 }
@@ -573,6 +642,7 @@
                         setActiveChannel(existingChannelDisplayName);
                         setCurrentPage('channel');
                         showMessage(`Te has unido al canal: ${existingChannelDisplayName}`, 'success');
+                        console.log("DEBUG PROFUNDO: handleCreateChannel - Canal existente unido:", existingChannelDisplayName);
                     } else {
                         await window.setDoc(channelDocRef, {
                             name: normalizedChannelName,
@@ -581,23 +651,23 @@
                             createdBy: userId,
                             creatorUserName: userName,
                             dailyCoRoomUrl: dailyCoRoomUrl,
-                            lastActivity: window.serverTimestamp() // Establece lastActivity en la creación
+                            lastActivity: window.serverTimestamp()
                         });
                         setActiveChannel(originalChannelInput);
                         setCurrentPage('channel');
                         showMessage(`¡Canal "${originalChannelInput}" creado y te has unido!`, 'success');
+                        console.log("DEBUG PROFUNDO: handleCreateChannel - Canal creado y unido:", originalChannelInput);
                     }
 
-                    // MODIFICACIÓN: Añadir usuario a la subcolección de miembros del canal,
-                    // tanto si el canal es nuevo como si ya existía y el usuario se unió.
                     const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
                     await window.setDoc(memberDocRef, {
                         userName: userName,
                         joinedAt: window.serverTimestamp()
                     }, { merge: true });
+                    console.log("DEBUG PROFUNDO: handleCreateChannel - Miembro añadido al canal:", userId);
 
                 } catch (error) {
-                    console.error("Error al crear o unirse al canal:", error);
+                    console.error("DEBUG PROFUNDO: Error al crear o unirse al canal:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
                         showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
                     } else {
@@ -606,9 +676,9 @@
                 } finally {
                     setIsLoading(false);
                 }
-            };
+            }, [channelName, userName, isAuthReady, db, userId, showMessage, setIsLoading, setCurrentPage, setActiveChannel]);
 
-            const handleJoinChannelFromExplore = async (channelToJoin) => {
+            const handleJoinChannelFromExplore = React.useCallback(async (channelToJoin) => {
                 setActiveChannel(channelToJoin.name);
                 setCurrentPage('channel');
                 if (dailyCallFrame) {
@@ -617,28 +687,29 @@
                     setIsStreaming(false);
                 }
                 showMessage(`Te has unido al canal: ${channelToJoin.name}`, 'success');
+                console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Unido al canal:", channelToJoin.name);
 
-                // NUEVO: Añadir usuario a la subcolección de miembros del canal
                 if (isAuthReady && db && userId && userName) {
                     const normalizedChannelName = channelToJoin.name.toLowerCase();
                     const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
                     try {
+                        console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Añadiendo miembro al unirse al canal:", userId);
                         await window.setDoc(memberDocRef, {
                             userName: userName,
                             joinedAt: window.serverTimestamp()
                         }, { merge: true });
                     } catch (error) {
-                        console.error("Error al añadir miembro al unirse al canal:", error);
+                        console.error("DEBUG PROFUNDO: Error al añadir miembro al unirse al canal:", error);
                     }
                 }
-            };
+            }, [userName, isAuthReady, db, userId, showMessage, setCurrentPage, setActiveChannel, dailyCallFrame]);
 
-            const handleSendMessage = async () => {
+            const handleSendMessage = React.useCallback(async () => {
                 if (currentMessage.trim() === '') {
                     return;
                 }
                 if (!isAuthReady || !db || !userId || !activeChannel || !userName) {
-                    console.warn("Firebase, usuario, canal o nombre de usuario no están listos. No se puede enviar el mensaje.");
+                    console.warn("DEBUG PROFUNDO: handleSendMessage - Firebase, usuario, canal o nombre de usuario no están listos. No se puede enviar el mensaje.");
                     showMessage("No se pudo enviar el mensaje. La aplicación no está lista.", 'error');
                     return;
                 }
@@ -647,6 +718,7 @@
 
                 try {
                     const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
+                    console.log("DEBUG PROFUNDO: handleSendMessage - Enviando mensaje:", currentMessage.trim(), "a canal:", normalizedActiveChannel);
                     await window.addDoc(messagesColRef, {
                         text: currentMessage.trim(),
                         senderId: userId,
@@ -656,21 +728,23 @@
                     setCurrentMessage('');
                     scrollToBottom();
 
-                    // Actualizar la última actividad del canal
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
                     await window.setDoc(channelDocRef, { lastActivity: window.serverTimestamp() }, { merge: true });
+                    console.log("DEBUG PROFUNDO: handleSendMessage - Última actividad del canal actualizada.");
 
                 } catch (error) {
-                    console.error("Error al enviar mensaje:", error);
+                    console.error("DEBUG PROFUNDO: Error al enviar mensaje:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
                         showMessage("Error de conexión o permisos al enviar mensaje. Verifica las reglas de Firestore.", 'error');
                     } else {
                         showMessage("Error al enviar mensaje. Consulta la consola.", 'error');
                     }
                 }
-            };
+            }, [currentMessage, userName, activeChannel, isAuthReady, db, userId, showMessage, scrollToBottom]);
 
-            const handleDeleteChannel = async (channelDisplayName) => {
+            const handleDeleteChannel = React.useCallback(async (channelDisplayName) => {
+                console.log("DEBUG PROFUNDO: handleDeleteChannel - userId actual:", userId);
+                console.log("DEBUG PROFUNDO: handleDeleteChannel - Iniciando eliminación para canal:", channelDisplayName);
                 const userConfirmed = await new Promise((resolve) => {
                     const confirmModal = document.createElement('div');
                     confirmModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
@@ -694,10 +768,12 @@
                 });
 
                 if (!userConfirmed) {
+                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Eliminación cancelada por el usuario.");
                     return;
                 }
 
                 if (!isAuthReady || !db || !userId) {
+                    console.warn("DEBUG PROFUNDO: handleDeleteChannel - Firebase no está listo o db/userId es null. No se puede eliminar.");
                     showMessage("Firebase no está listo o no tienes un ID de usuario. No se puede eliminar el canal.", 'error');
                     return;
                 }
@@ -709,45 +785,63 @@
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelId);
                     const docSnap = await window.getDoc(channelDocRef);
 
-                    if (docSnap.exists() && docSnap.data().createdBy === userId) {
-                        // Eliminar subcolección de mensajes
+                    if (!docSnap.exists()) {
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Canal no existe.");
+                        showMessage("El canal no existe.", 'error');
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Valores para la evaluación de permisos:");
+                    console.log("DEBUG PROFUNDO:   - userId (actual):", userId);
+                    console.log("DEBUG PROFUNDO:   - isTigre (estado React):", isTigre);
+                    console.log("DEBUG PROFUNDO:   - channel.createdBy (desde Firestore):", docSnap.data().createdBy);
+                    console.log("DEBUG PROFUNDO:   - ¿userId === channel.createdBy?:", userId === docSnap.data().createdBy);
+
+                    if (isTigre || docSnap.data().createdBy === userId) {
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Permiso CONCEDIDO. Iniciando eliminación de subcolecciones y canal.");
+
                         const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`);
                         const messagesSnapshot = await window.getDocs(messagesColRef);
                         const deleteMessagePromises = [];
                         messagesSnapshot.forEach(msgDoc => {
                             deleteMessagePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`, msgDoc.id)));
                         });
+                        console.log(`DEBUG PROFUNDO: handleDeleteChannel - Eliminando ${deleteMessagePromises.length} mensajes.`);
                         await Promise.all(deleteMessagePromises);
 
-                        // NUEVO: Eliminar subcolección de miembros
                         const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`);
                         const membersSnapshot = await window.getDocs(membersColRef);
                         const deleteMemberPromises = [];
                         membersSnapshot.forEach(memberDoc => {
                             deleteMemberPromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`, memberDoc.id)));
                         });
+                        console.log(`DEBUG PROFUNDO: handleDeleteChannel - Eliminando ${deleteMemberPromises.length} miembros.`);
                         await Promise.all(deleteMemberPromises);
 
 
                         await window.deleteDoc(channelDocRef);
                         showMessage(`Canal "${channelDisplayName}" eliminado con éxito.`, 'success');
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Canal principal eliminado.");
+                        fetchChannels();
                     } else {
-                        showMessage("No tienes permiso para eliminar este canal o el canal no existe.", 'error');
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Permiso DENEGADO. Condiciones no cumplidas.");
+                        showMessage("No tienes permiso para eliminar este canal.", 'error');
                     }
                 } catch (error) {
-                    console.error("Error al eliminar el canal:", error);
+                    console.error("DEBUG PROFUNDO: Error al eliminar el canal (catch general):", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
                         showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
-                    } else {
+                        } else {
                         showMessage("Error al eliminar el canal. Consulta la consola.", 'error');
                     }
                 } finally {
                     setIsLoading(false);
                 }
-            };
+            }, [isAuthReady, db, userId, isTigre, showMessage, setIsLoading, fetchChannels]);
 
 
-            const handleToggleCamera = async () => {
+            const handleToggleCamera = React.useCallback(async () => {
                 if (!activeChannel || !userId) {
                     showMessage("No hay un canal activo o el usuario no está autenticado.", 'error');
                     return;
@@ -773,7 +867,7 @@
                             return;
                         }
 
-                        const dailyCoRoomUrl = docSnap.data().dailyCoRoomUrl;
+                        const dailyCoRoomUrl = `https://YOUR_DAILY_DOMAIN.daily.co/${normalizedChannelName}-video`; // Asegúrate de reemplazar YOUR_DAILY_DOMAIN
                         const videoContainerElement = document.getElementById('daily-video-container');
 
                         if (!videoContainerElement) {
@@ -808,7 +902,6 @@
                             }
                             setIsLoading(false);
 
-                            // NUEVO: Inicializar participantes online
                             const participants = call.participants();
                             const currentOnline = new Set();
                             for (const id in participants) {
@@ -836,7 +929,7 @@
                             console.log('Daily.co: Left meeting');
                             setIsStreaming(false);
                             setDailyCallFrame(null);
-                            setOnlineParticipants(new Set()); // Limpiar participantes online
+                            setOnlineParticipants(new Set());
                             showMessage("La transmisión ha terminado.", 'info');
                             if (videoContainerElement) {
                                 videoContainerElement.classList.add('hidden');
@@ -851,7 +944,7 @@
                             setDailyError(e);
                             showMessage(`Error de video: ${e.message}`, 'error');
                             setIsStreaming(false);
-                            setOnlineParticipants(new Set()); // Limpiar participantes online
+                            setOnlineParticipants(new Set());
                             if (call.iframe && call.iframe.parentNode) {
                                 call.iframe.parentNode.removeChild(call.iframe);
                             }
@@ -869,7 +962,7 @@
                         setIsLoading(false);
                     }
                 }
-            };
+            }, [activeChannel, userId, dailyCallFrame, isStreaming, showMessage, setIsLoading, setDailyError, userName, db]);
 
             React.useEffect(() => {
                 return () => {
@@ -879,7 +972,7 @@
                 };
             }, [dailyCallFrame]);
 
-            const copyToClipboard = (text) => {
+            const copyToClipboard = React.useCallback((text) => {
                 const textarea = document.createElement('textarea');
                 textarea.value = text;
                 document.body.appendChild(textarea);
@@ -892,17 +985,17 @@
                     showMessage('Error al copiar al portapapeles.', 'error');
                 }
                 document.body.removeChild(textarea);
-            };
+            }, [showMessage]);
 
-            const handleAttachFile = () => {
+            const handleAttachFile = React.useCallback(() => {
                 if (fileInputRef.current) {
                     fileInputRef.current.click();
                 }
                 setShowOptionsMenu(false);
-            };
+            }, []);
 
 
-            const onFileSelected = async (event) => {
+            const onFileSelected = React.useCallback(async (event) => {
                 const file = event.target.files[0];
                 if (!file) {
                     return;
@@ -938,24 +1031,23 @@
                     }
 
                     const data = await response.json();
-                    const downloadURL = data.secure_url; // URL HTTPS del archivo subido
+                    const downloadURL = data.secure_url;
                     console.log('Archivo disponible en Cloudinary:', downloadURL);
 
-                    // Envía la URL de Cloudinary a Firestore como un mensaje
                     const normalizedActiveChannel = activeChannel.toLowerCase();
                     const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
                     await window.addDoc(messagesColRef, {
-                        text: downloadURL, // Envía la URL como contenido del mensaje
+                        text: downloadURL,
                         senderId: userId,
                         senderUserName: userName,
                         timestamp: window.serverTimestamp(),
-                        fileUrl: downloadURL, // Opcionalmente, almacena la URL en un campo separado
+                        fileUrl: downloadURL,
                         fileName: file.name,
                         fileType: file.type,
                     });
 
-                    setCurrentMessage(''); // Borra la entrada del mensaje
-                    showMessage('Archivo subido con éxito y enviado al chat.', 'success'); //Cloudinary
+                    setCurrentMessage('');
+                    showMessage('Archivo subido con éxito y enviado al chat.', 'success');
                     scrollToBottom();
 
                 } catch (error) {
@@ -964,28 +1056,24 @@
                 } finally {
                     setIsLoading(false);
                 }
-            };
+            }, [activeChannel, isAuthReady, db, userId, userName, showMessage, setIsLoading, scrollToBottom]);
 
 
             // PWA: Manejador para el botón de instalación
-            const handleInstallClick = async () => {
+            const handleInstallClick = React.useCallback(async () => {
                 if (deferredPrompt) {
-                    // Muestra el prompt de instalación
                     deferredPrompt.prompt();
-                    // Espera la elección del usuario
                     const { outcome } = await deferredPrompt.userChoice;
                     console.log(`User response to the install prompt: ${outcome}`);
-                    // Limpia el evento después de la elección del usuario
                     setDeferredPrompt(null);
                 }
-            };
+            }, [deferredPrompt]);
 
             const renderHomePage = () => (
                 <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-600 to-blue-500 p-4 font-inter">
                     <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
                         <h1 className="text-4xl font-extrabold text-gray-800 mb-6">CHANNEL</h1>
 
-                        {/* PWA: Botón de instalación condicional */}
                         {deferredPrompt && !isPwaInstalled && (
                             <button
                                 onClick={handleInstallClick}
@@ -1008,9 +1096,11 @@
                                     value={userName}
                                     onChange={(e) => {
                                         setUserName(e.target.value);
-                                        if (userNameConfirmed) {
-                                            setUserNameConfirmed(false);
-                                        }
+                                        // When username changes, reset confirmation and Tigre related states
+                                        setUserNameConfirmed(false);
+                                        setIsTigre(false);
+                                        setShowTigreCodeInput(false);
+                                        setTigreCode('');
                                     }}
                                     maxLength="48"
                                     disabled={userNameConfirmed}
@@ -1025,7 +1115,16 @@
                                 )}
                                 {userNameConfirmed && (
                                     <button
-                                        onClick={() => setUserNameConfirmed(false)}
+                                        onClick={() => {
+                                            setUserNameConfirmed(false);
+                                            setIsTigre(false);
+                                            setShowTigreCodeInput(false);
+                                            setTigreCode('');
+                                            if (db && userId) {
+                                                const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+                                                window.setDoc(userProfileRef, { isTigreActive: false }, { merge: true }).catch(e => console.error("Error al desactivar Tigre en Firestore:", e));
+                                            }
+                                        }}
                                         className="bg-gray-400 hover:bg-400 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
                                     >
                                         Editar
@@ -1033,6 +1132,32 @@
                                 )}
                             </div>
                         </div>
+
+                        {/* NEW LOGIC: showTigreCodeInput is now controlled by handleConfirmUserName */}
+                        {userNameConfirmed && userName.trim() === 'Julian360' && showTigreCodeInput && !isTigre && (
+                            <div className="mt-6 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
+                                <p className="mb-2 font-semibold">Modo Tigre: Ingresa el código de 8 dígitos para habilitar.</p>
+                                <input
+                                    type="password"
+                                    placeholder="Código de 8 dígitos"
+                                    className="w-full p-3 border border-yellow-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-lg mb-3"
+                                    value={tigreCode}
+                                    onChange={(e) => setTigreCode(e.target.value)}
+                                    maxLength="8"
+                                />
+                                <button
+                                    onClick={handleTigreCodeSubmit}
+                                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
+                                >
+                                    Confirmar Código
+                                </button>
+                            </div>
+                        )}
+                        {isTigre && (
+                            <div className="mt-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+                                <p className="font-semibold">¡Modo Tigre Activado!</p>
+                            </div>
+                        )}
 
                         <div className="mb-6">
                             <input
@@ -1106,7 +1231,6 @@
                                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { handleToggleCamera(); setShowOptionsMenu(false); }}>Stream 🎥</button>
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Adjuntar Archivo 📎</button>
-                                    {/* CAMBIO: "Opción 3" a "Actividad" y su manejador */}
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { setShowActivityPanel(true); setShowOptionsMenu(false); }}>Actividad 👥</button>
                                 </div>
                             )}
@@ -1121,9 +1245,7 @@
                                     chatMessages.map((msg) => (
                                         <div key={msg.id} className={`mb-2 p-2 rounded-lg ${msg.senderId === userId ? 'bg-blue-100 self-end text-right' : 'bg-gray-200 self-start text-left'}`} style={{ maxWidth: '80%' }}>
                                             <p className="font-semibold text-xs">{msg.senderId === userId ? 'Tú' : msg.senderUserName}</p>
-                                            {/* Conditionally render content based on if it's a file URL */}
                                             {msg.fileUrl ? (
-                                                // Check if the file type is an image
                                                 msg.fileType && msg.fileType.startsWith('image/') ? (
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block">
                                                         <img src={msg.fileUrl} alt={msg.fileName || 'Imagen adjunta'} className="max-w-xs max-h-32 rounded-lg object-contain mb-1" />
@@ -1131,7 +1253,7 @@
                                                             🖼️ {msg.fileName || 'Imagen Adjunta'}
                                                         </span>
                                                     </a>
-                                                ) : // Check if the file type is audio
+                                                ) :
                                                 msg.fileType && msg.fileType.startsWith('audio/') ? (
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block w-full max-w-sm">
                                                         <audio controls src={msg.fileUrl} className="w-full mb-1"></audio>
@@ -1139,7 +1261,7 @@
                                                             🎵 {msg.fileName || 'Audio Adjunto'}
                                                         </span>
                                                     </a>
-                                                ) : // Check if the file type is video
+                                                ) :
                                                 msg.fileType && msg.fileType.startsWith('video/') ? (
                                                     <div className="flex flex-col items-start">
                                                         <p className="text-sm md:text-base text-gray-800 mb-1">
@@ -1150,7 +1272,6 @@
                                                         </a>
                                                     </div>
                                                 ) : (
-                                                    // Otherwise, render as a general file link
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
                                                         📎 {msg.fileName || 'Archivo Adjunto'}
                                                     </a>
@@ -1197,7 +1318,6 @@
                         )}
                     </div>
 
-                    {/* NUEVO: Panel de Actividad (Lista de Usuarios) */}
                     {showActivityPanel && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-end z-40">
                             <div className="bg-white w-full max-w-xs p-6 rounded-l-2xl shadow-lg flex flex-col">
@@ -1235,11 +1355,10 @@
 
             const renderExplorePage = () => (
                 <div className="flex flex-col items-center justify-start min-h-screen bg-gradient-to-br from-teal-500 to-cyan-600 p-4 font-inter">
-                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8 relative"> {/* Added relative for absolute positioning */}
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8 relative">
                         <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Explorar Canales</h1>
                         <p className="text-lg text-gray-600 mb-8"> </p>
 
-                        {/* Menu de opciones en la esquina superior derecha */}
                         <div className="absolute top-4 right-4" ref={exploreMenuRef}>
                             <button
                                 onClick={() => setShowExploreMenu(!showExploreMenu)}
@@ -1278,7 +1397,7 @@
                                         onClick={() => {
                                             setShowSearchInput(!showSearchInput);
                                             setShowExploreMenu(false);
-                                            setSortOption('none'); // Reset sorting when searching
+                                            setSortOption('none');
                                         }}
                                     >
                                         Buscar canal
@@ -1314,7 +1433,7 @@
                                         >
                                             Unirse
                                         </button>
-                                        {userId === channel.createdBy && (
+                                        {(userId === channel.createdBy || isTigre) && (
                                             <button
                                                 onClick={() => handleDeleteChannel(channel.name)}
                                                 className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300"
