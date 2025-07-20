@@ -1069,9 +1069,10 @@
        
         // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
       // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-        // Version: 2025-07-20-DailyFix-v58
+      // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+        // Version: 2025-07-20-DailyFix-v59
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v58");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v59");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1190,6 +1191,7 @@
                 // NEW: Explicitly create and set offer after adding tracks with a timeout
                 console.log("DEBUG PROFUNDO: BEFORE createOffer. Current signalingState:", pcInstance.signalingState);
                 console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers());
+                console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, tracks: ${stream.getTracks().length}`); // NEW LOG
 
                 const createOfferPromise = pcInstance.createOffer();
                 const createOfferTimeout = new Promise((resolve, reject) =>
@@ -1378,7 +1380,6 @@
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
         }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
-
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
