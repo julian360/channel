@@ -1068,9 +1068,10 @@
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
        
         // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-        // Version: 2025-07-20-DailyFix-v57
+      // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+        // Version: 2025-07-20-DailyFix-v58
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v57");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v58");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1114,7 +1115,7 @@
                             urls: [ "stun:eu-turn3.xirsys.com" ]
                         },
                         {
-                            username: "O7tpKs7JoPXBgQzCEfvaK2zC-wicd4zk0jZpfeF3HyKScXVrwJhbpBbiOhzCAuBLAAAAAGh8zbdqdWxpYW4zNjA=",
+                            username: "O7tpKs7JoPXBgQzCEfvaK2zC-wicd4zk0jZpfeF3HyScXVrwJhbpBbiOhzCAuBLAAAAAGh8zbdqdWxpYW4zNjA=",
                             credential: "978d21a4-6559-11f0-97ea-0242ac140004",
                             urls: [
                                 "turn:eu-turn3.xirsys.com:80?transport=udp",
@@ -1186,21 +1187,49 @@
                     }
                 };
 
-                // NEW: Explicitly create and set offer after adding tracks
-                console.log("DEBUG PROFUNDO: BEFORE createOffer. Current signalingState:", pcInstance.signalingState); // NEW LOG
-                console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers()); // NEW LOG
-                const offer = await pcInstance.createOffer();
-                console.log("DEBUG PROFUNDO: AFTER createOffer. Offer created:", offer); // NEW LOG
+                // NEW: Explicitly create and set offer after adding tracks with a timeout
+                console.log("DEBUG PROFUNDO: BEFORE createOffer. Current signalingState:", pcInstance.signalingState);
+                console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers());
+
+                const createOfferPromise = pcInstance.createOffer();
+                const createOfferTimeout = new Promise((resolve, reject) =>
+                    setTimeout(() => reject(new Error('createOffer timed out')), 20000) // 20 seconds timeout for createOffer
+                );
+
+                let offer;
+                try {
+                    console.log("DEBUG PROFUNDO: Attempting to create offer (with timeout). Awaiting Promise.race.");
+                    offer = await Promise.race([createOfferPromise, createOfferTimeout]);
+                    console.log("DEBUG PROFUNDO: AFTER createOffer. Offer created:", offer);
+                } catch (createOfferError) {
+                    console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC): Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
+                    showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
+                    // Clean up WebRTC resources on error
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    if (pcInstance) {
+                        pcInstance.close();
+                    }
+                    setLocalStream(null);
+                    setPeerConnection(null);
+                    setIsStreaming(false);
+                    setIsStreamer(false);
+                    setIsLoading(false);
+                    setIsStartingStream(false);
+                    return; // Exit if offer creation fails
+                }
+
 
                 // Specific try-catch for setLocalDescription with a timeout
                 const setLocalDescriptionPromise = pcInstance.setLocalDescription(offer);
-                const timeoutPromise = new Promise((resolve, reject) =>
-                    setTimeout(() => reject(new Error('setLocalDescription timed out')), 15000) // Increased timeout to 15 seconds
+                const setLocalDescriptionTimeout = new Promise((resolve, reject) =>
+                    setTimeout(() => reject(new Error('setLocalDescription timed out')), 15000) // 15 seconds timeout
                 );
 
                 try {
                     console.log("DEBUG PROFUNDO: Attempting to set local description (with timeout). Awaiting Promise.race.");
-                    await Promise.race([setLocalDescriptionPromise, timeoutPromise]);
+                    await Promise.race([setLocalDescriptionPromise, setLocalDescriptionTimeout]);
                     console.log("DEBUG PROFUNDO: Offer set as local description. Local description object:", pcInstance.localDescription);
                     console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`);
                     showMessage("Local description set successfully!", 'success');
