@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v35 (WebRTC Streaming - More Granular Error Logging)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v36 (WebRTC Streaming - More Granular Error Logging and Firestore Update Check)");
 
 
         // Helper function to generate a random username for new users
@@ -1115,7 +1115,7 @@
                         const offer = await pc.createOffer();
                         console.log("DEBUG PROFUNDO: startStreaming - Offer created:", offer);
                         await pc.setLocalDescription(offer);
-                        console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description.");
+                        console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pc.localDescription); // NEW LOG
                     } catch (offerError) {
                         console.error(`DEBUG PROFUNDO: Error creating or setting offer (WebRTC): Name: ${offerError.name}, Message: ${offerError.message}`, offerError);
                         showMessage(`Error al iniciar stream (WebRTC Offer): ${offerError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
