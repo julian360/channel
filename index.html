@@ -1065,8 +1065,9 @@
 
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
 // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+        // Version: 2025-07-20-DailyFix-v54
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated.");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v54");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1150,16 +1151,22 @@
                             console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription from onnegotiationneeded - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`);
                             showMessage("Local description set successfully!", 'success');
 
-                            // Save offer to Firestore (This block is moved inside the successful try-catch for setLocalDescription)
-                            const offerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'offer');
-                            await window.setDoc(offerRef, {
-                                sdp: pcInstance.localDescription.sdp, // Use localDescription after it's set
-                                type: pcInstance.localDescription.type, // Use localDescription after it's set
-                                senderId: currentAuthUserId,
-                                senderUserName: userName,
-                                timestamp: window.serverTimestamp()
-                            });
-                            console.log("DEBUG PROFUNDO: WebRTC offer saved to Firestore from onnegotiationneeded:", pcInstance.localDescription.toJSON());
+                            // Normalize activeChannel for Firestore paths
+                            const normalizedActiveChannel = activeChannel.toLowerCase();
+                            // Get reference to the 'webrtc_data' document
+                            const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}`, 'webrtc_data');
+
+                            // Save offer to Firestore as a field in 'webrtc_data' document
+                            await window.setDoc(webrtcDocRef, {
+                                offer: {
+                                    sdp: pcInstance.localDescription.sdp,
+                                    type: pcInstance.localDescription.type,
+                                    senderId: currentAuthUserId,
+                                    senderUserName: userName,
+                                    timestamp: window.serverTimestamp()
+                                }
+                            }, { merge: true });
+                            console.log("DEBUG PROFUNDO: WebRTC offer saved to Firestore as field in webrtc_data:", pcInstance.localDescription.toJSON());
 
                             // Update channel status in Firestore to indicate streaming
                             const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
@@ -1230,12 +1237,18 @@
                 // Normalize activeChannel for Firestore paths
                 const normalizedActiveChannel = activeChannel.toLowerCase();
 
+                // Get reference to the 'webrtc_data' document
+                const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}`, 'webrtc_data');
+                // Get reference to the 'candidates' subcollection under 'webrtc_data' document
+                const candidatesCollectionRef = window.collection(webrtcDocRef, 'candidates');
+
+
                 // Handle ICE candidates - NOW SAVING TO UNIFIED CANDIDATES COLLECTION
                 pcInstance.onicecandidate = async (event) => {
                     if (event.candidate) {
                         console.log("DEBUG PROFUNDO: ICE Candidate found:", event.candidate);
                         // Save ICE candidate to Firestore with senderId
-                        const candidateRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
+                        const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
                         await window.setDoc(candidateRef, {
                             ...event.candidate.toJSON(),
                             senderId: currentAuthUserId // Add senderId to the candidate document
@@ -1258,39 +1271,41 @@
                 };
 
                 // Listen for answers from viewers
-                const answerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'answer');
-                const unsubscribeAnswer = window.onSnapshot(answerRef, async (docSnap) => {
-                    if (docSnap.exists() && docSnap.data().type === 'answer' && docSnap.data().receiverId === currentAuthUserId && !pcInstance.currentRemoteDescription) {
-                        const answer = new RTCSessionDescription(docSnap.data());
-                        console.log("DEBUG PROFUNDO: Received answer from Firestore:", answer);
-                        await pcInstance.setRemoteDescription(answer);
-                        console.log("DEBUG PROFUNDO: Remote description (answer) set.");
-                        showMessage("Respuesta de espectador recibida.", 'info');
+                // The answer is now a field within the 'webrtc_data' document
+                const unsubscribeAnswer = window.onSnapshot(webrtcDocRef, async (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.answer && data.answer.receiverId === currentAuthUserId && !pcInstance.currentRemoteDescription) {
+                            const answer = new RTCSessionDescription(data.answer);
+                            console.log("DEBUG PROFUNDO: Received answer from Firestore:", answer);
+                            await pcInstance.setRemoteDescription(answer);
+                            console.log("DEBUG PROFUNDO: Remote description (answer) set.");
+                            showMessage("Respuesta de espectador recibida.", 'info');
 
-                        // After setting the answer, collect and add ICE candidates from viewer
-                        // NOW LISTENING TO THE UNIFIED CANDIDATES COLLECTION
-                        const channelCandidatesRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`);
-                        const candidateSnapshot = await window.getDocs(channelCandidatesRef);
-                        candidateSnapshot.forEach(async (candidateDoc) => {
-                            if (candidateDoc.exists() && candidateDoc.data().senderId !== currentAuthUserId) { // Filter out own candidates
-                                try {
-                                    const candidate = new RTCIceCandidate(candidateDoc.data());
-                                    await pcInstance.addIceCandidate(candidate);
-                                    console.log("DEBUG PROFUNDO: Added viewer ICE candidate:", candidate);
-                                    // Optionally delete the candidate after adding it to avoid processing duplicates
-                                    await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`, candidateDoc.id));
-                                } catch (e) {
-                                    console.error("DEBUG PROFUNDO: Error adding viewer ICE candidate:", e);
+                            // After setting the answer, collect and add ICE candidates from viewer
+                            // NOW LISTENING TO THE UNIFIED CANDIDATES COLLECTION
+                            const candidateSnapshot = await window.getDocs(candidatesCollectionRef);
+                            candidateSnapshot.forEach(async (candidateDoc) => {
+                                if (candidateDoc.exists() && candidateDoc.data().senderId !== currentAuthUserId) { // Filter out own candidates
+                                    try {
+                                        const candidate = new RTCIceCandidate(candidateDoc.data());
+                                        await pcInstance.addIceCandidate(candidate);
+                                        console.log("DEBUG PROFUNDO: Added viewer ICE candidate:", candidate);
+                                        // Optionally delete the candidate after adding it to avoid processing duplicates
+                                        await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
+                                    } catch (e) {
+                                        console.error("DEBUG PROFUNDO: Error adding viewer ICE candidate:", e);
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
                 }, (error) => {
                     console.error("DEBUG PROFUNDO: Error listening for answer:", error);
                 });
 
                 // Listen for candidates from viewers (after answer is set) - NOW LISTENING TO UNIFIED CANDIDATES COLLECTION
-                const channelCandidatesListener = window.onSnapshot(window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`), (snapshot) => {
+                const channelCandidatesListener = window.onSnapshot(candidatesCollectionRef, (snapshot) => {
                     snapshot.docChanges().forEach(async (change) => {
                         if (change.type === "added") {
                             const candidateData = change.doc.data();
@@ -1301,7 +1316,7 @@
                                         await pcInstance.addIceCandidate(candidate);
                                         console.log("DEBUG PROFUNDO: Added viewer candidate (via listener):", candidate);
                                         // Optionally delete the candidate after adding it to avoid processing duplicates
-                                        await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`, change.doc.id));
+                                        await window.deleteDoc(window.doc(candidatesCollectionRef, change.doc.id));
                                     } else {
                                         console.log("DEBUG PROFUNDO: Remote description not set yet, deferring viewer candidate:", candidate);
                                     }
@@ -1353,6 +1368,7 @@
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
         }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
+
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
