@@ -1072,8 +1072,8 @@
       // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
         // Version: 2025-07-20-DailyFix-v59
        // Version: 2025-07-20-DailyFix-v60
-          const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v61");
+         const startStreaming = React.useCallback(async () => {
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v63");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1194,40 +1194,73 @@
                 console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers());
                 console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, tracks: ${stream.getTracks().length}`);
 
-                // NEW: Check for stream readiness before creating offer - Modified for retry
+                // NEW: Robust check for stream and track readiness before creating offer
                 let offer;
-                const maxRetries = 5;
-                const retryDelayMs = 500; // 500ms delay between retries
+                const maxReadinessRetries = 20; // Increased retries for readiness
+                const readinessRetryDelayMs = 100; // Shorter delay for readiness checks
 
-                for (let i = 0; i < maxRetries; i++) {
-                    console.log(`DEBUG PROFUNDO: Attempting to create offer (Retry ${i + 1}/${maxRetries})...`);
-                    if (!stream.active || stream.readyState !== 'live' || stream.getTracks().length === 0) {
-                        const errorMessage = `Media stream is not fully ready. Active: ${stream.active}, ReadyState: ${stream.readyState}, Tracks: ${stream.getTracks().length}.`;
-                        console.warn("DEBUG PROFUNDO: " + errorMessage); // Changed to warn for retries
-                        if (i === maxRetries - 1) { // If last retry
-                            showMessage(errorMessage + " Please check your camera/microphone.", 'error');
-                            throw new Error(errorMessage); // Throw error to exit
-                        }
-                        await new Promise(resolve => setTimeout(resolve, retryDelayMs)); // Delay before next retry
-                        continue; // Skip to next retry attempt
+                for (let i = 0; i < maxReadinessRetries; i++) {
+                    console.log(`DEBUG PROFUNDO: Checking stream readiness (Attempt ${i + 1}/${maxReadinessRetries})...`);
+
+                    // Check overall stream state
+                    if (!stream.active || stream.getTracks().length === 0) {
+                         const errorMessage = `Media stream is not active or has no tracks. Active: ${stream.active}, Tracks: ${stream.getTracks().length}.`;
+                         console.warn("DEBUG PROFUNDO: " + errorMessage);
+                         if (i === maxReadinessRetries - 1) {
+                             showMessage(errorMessage + " Please check your camera/microphone.", 'error');
+                             throw new Error(errorMessage);
+                         }
+                         await new Promise(resolve => setTimeout(resolve, readinessRetryDelayMs));
+                         continue;
                     }
 
-                    try {
-                        const createOfferPromise = pcInstance.createOffer();
-                        const createOfferTimeout = new Promise((resolve, reject) =>
-                            setTimeout(() => reject(new Error('createOffer timed out')), 20000) // 20 seconds timeout for createOffer
-                        );
-                        offer = await Promise.race([createOfferPromise, createOfferTimeout]);
-                        console.log("DEBUG PROFUNDO: AFTER createOffer. Offer created:", offer);
-                        break; // Success, exit loop
-                    } catch (createOfferError) {
-                        console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC) on attempt ${i + 1}: Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
-                        if (i === maxRetries - 1) { // If last retry
-                            showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
-                            throw createOfferError; // Re-throw to exit
+                    // Check individual track readinessState
+                    const allTracksReady = stream.getTracks().every(track => {
+                        console.log(`DEBUG PROFUNDO: Track ${track.kind} readyState: ${track.readyState}`);
+                        return track.readyState === 'live';
+                    });
+
+                    if (allTracksReady && stream.readyState === 'live') { // Ensure both stream and tracks are 'live'
+                        console.log("DEBUG PROFUNDO: Media stream and all tracks are ready.");
+                        break; // All ready, exit readiness loop
+                    } else {
+                        const errorMessage = `Media stream or not all tracks are ready. Stream readyState: ${stream.readyState}, All tracks live: ${allTracksReady}. Waiting for readyState 'live'.`;
+                        console.warn("DEBUG PROFUNDO: " + errorMessage);
+                        if (i === maxReadinessRetries - 1) {
+                            showMessage(errorMessage + " Please ensure your camera/microphone are fully initialized.", 'error');
+                            throw new Error(errorMessage);
                         }
-                        await new Promise(resolve => setTimeout(resolve, retryDelayMs)); // Delay before next retry
+                        await new Promise(resolve => setTimeout(resolve, readinessRetryDelayMs));
                     }
+                }
+
+                // Now attempt to create offer after readiness check
+                const createOfferPromise = pcInstance.createOffer();
+                const createOfferTimeout = new Promise((resolve, reject) =>
+                    setTimeout(() => reject(new Error('createOffer timed out')), 20000) // 20 seconds timeout for createOffer
+                );
+
+                try {
+                    console.log("DEBUG PROFUNDO: Attempting to create offer (with timeout). Awaiting Promise.race.");
+                    offer = await Promise.race([createOfferPromise, createOfferTimeout]);
+                    console.log("DEBUG PROFUNDO: AFTER createOffer. Offer created:", offer);
+                } catch (createOfferError) {
+                    console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC): Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
+                    showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
+                    // Clean up WebRTC resources on error
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    if (pcInstance) {
+                        pcInstance.close();
+                    }
+                    setLocalStream(null);
+                    setPeerConnection(null);
+                    setIsStreaming(false);
+                    setIsStreamer(false);
+                    setIsLoading(false);
+                    setIsStartingStream(false);
+                    return; // Exit if offer creation fails
                 }
 
 
