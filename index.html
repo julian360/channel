@@ -1072,8 +1072,9 @@
       // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
         // Version: 2025-07-20-DailyFix-v59
        // Version: 2025-07-20-DailyFix-v60
+         // Version: 2025-07-20-DailyFix-v65
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v64");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v65");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1151,6 +1152,10 @@
                     pcInstance.addTrack(track, stream);
                     console.log("DEBUG PROFUNDO: Added local track to peer connection:", track.kind);
                 });
+
+                // NEW: Small delay after adding tracks to allow PC to register them fully
+                console.log("DEBUG PROFUNDO: Adding small delay after adding tracks...");
+                await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
 
                 // Normalize activeChannel for Firestore paths
                 const normalizedActiveChannel = activeChannel.toLowerCase();
@@ -1424,156 +1429,6 @@
                 }
             }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
 
-            const stopStreaming = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: stopStreaming - Initiated.");
-                if (peerConnection) {
-                    peerConnection.close();
-                    setPeerConnection(null);
-                    console.log("DEBUG PROFUNDO: stopStreaming - Peer connection closed.");
-                }
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                    setLocalStream(null);
-                    console.log("DEBUG PROFUNDO: stopStreaming - Local stream tracks stopped.");
-                }
-                setRemoteStream(null);
-                setIsStreaming(false);
-                setIsReceivingStream(false);
-                setIsStreamer(false);
-                console.log("DEBUG PROFUNDO: stopStreaming - Streaming states reset.");
-
-                // Update Firestore to indicate no active stream
-                if (db && activeChannel) {
-                    const normalizedActiveChannel = activeChannel.toLowerCase();
-                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
-                    try {
-                        console.log("DEBUG PROFUNDO: stopStreaming - Updating channel doc in Firestore.");
-                        await window.setDoc(channelDocRef, {
-                            isStreaming: false,
-                            streamerId: null,
-                            streamerUserName: null,
-                            offer: window.deleteField(), // Remove offer
-                            answer: window.deleteField() // Remove answer
-                        }, { merge: true });
-                        // Clear all ICE candidates for this channel
-                        const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`);
-                        const snapshot = await window.getDocs(iceCandidatesColRef);
-                        const deletePromises = [];
-                        snapshot.forEach(doc => {
-                            deletePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, doc.id)));
-                        });
-                        console.log(`DEBUG PROFUNDO: stopStreaming - Deleting ${deletePromises.length} ICE candidates.`);
-                        await Promise.all(deletePromises);
-
-                        showMessage("Streaming stopped and channel status updated.", 'info');
-                        console.log("DEBUG PROFUNDO: Streaming stopped, channel status in Firestore cleared.");
-                    } catch (error) {
-                        console.error("DEBUG PROFUNDO: Error updating channel streaming status in Firestore:", error);
-                        showMessage("Error stopping stream status in Firestore.", 'error');
-                    }
-                }
-            }, [peerConnection, localStream, activeChannel, db, showMessage]);
-
-
-            // Effect to assign streams to video elements
-            React.useEffect(() => {
-                if (localVideoRef.current && localStream) {
-                    localVideoRef.current.srcObject = localStream;
-                }
-            }, [localStream]);
-
-            React.useEffect(() => {
-                if (remoteVideoRef.current && remoteStream) {
-                    remoteVideoRef.current.srcObject = remoteStream;
-                }
-            }, [remoteStream]);
-
-
-            const copyToClipboard = React.useCallback((text) => {
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                document.body.appendChild(textarea);
-                textarea.select();
-                try {
-                    document.execCommand('copy');
-                    showMessage(`"${text}" copied to clipboard!`, 'success');
-                } catch (err) {
-                    console.error('Error copying to clipboard:', err);
-                    showMessage('Error copying to clipboard.', 'error');
-                }
-                document.body.removeChild(textarea);
-            }, [showMessage]);
-
-            const handleAttachFile = React.useCallback(() => {
-                if (fileInputRef.current) {
-                    fileInputRef.current.click();
-                }
-                setShowOptionsMenu(false);
-            }, []);
-
-
-            const onFileSelected = React.useCallback(async (event) => {
-                const file = event.target.files[0];
-                if (!file) {
-                    return;
-                }
-
-                if (!isAuthReady || !db || !userId || !activeChannel) {
-                    showMessage("Application not ready to upload files. Please try again.", 'error');
-                    return;
-                }
-
-                setIsLoading(true);
-
-                // --- Cloudinary Configuration (REPLACE THESE WITH YOURS) ---
-                const cloudName = 'dq527zvti'; // Your Cloudinary Cloud name
-                const unsignedUploadPreset = 'jlchannel'; // The unsigned upload preset you created in Cloudinary
-                // -------------------------------------------------------------
-
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('upload_preset', unsignedUploadPreset);
-
-                try {
-                    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        console.error("Error uploading file to Cloudinary:", errorData);
-                        showMessage(`Error uploading file: ${errorData.error.message || 'Unknown error'}`, 'error');
-                        return;
-                    }
-
-                    const data = await response.json();
-                    const downloadURL = data.secure_url;
-                    console.log('File available on Cloudinary:', downloadURL);
-
-                    const normalizedActiveChannel = activeChannel.toLowerCase();
-                    const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
-                    await window.addDoc(messagesColRef, {
-                        text: downloadURL,
-                        senderId: userId,
-                        senderUserName: userName,
-                        timestamp: window.serverTimestamp(),
-                        fileUrl: downloadURL,
-                        fileName: file.name,
-                        fileType: file.type,
-                    });
-
-                    setCurrentMessage('');
-                    showMessage('File successfully uploaded and sent to chat.', 'success');
-                    scrollToBottom();
-
-                } catch (error) {
-                    console.error("Error in Cloudinary upload (general catch):", error);
-                    showMessage(`Error initiating upload: ${error.message || 'Unknown error'}`, 'error');
-                } finally {
-                    setIsLoading(false);
-                }
-            }, [activeChannel, isAuthReady, db, userId, userName, showMessage, setIsLoading, scrollToBottom]);
 
 
             // PWA: Handler for the install button
