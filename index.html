@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v52 (WebRTC Streaming - setLocalDescription Timeout Detection)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v53 (WebRTC Streaming - TURN & ICE Gathering Logs)");
 
 
         // Helper function to generate a random username for new users
@@ -986,14 +986,23 @@
 
             // WebRTC Functions
             const createPeerConnection = React.useCallback((currentAuthUserId) => { // Pass userId as argument
-                const pc = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' }, // Google's public STUN server
-                    ],
-                });
+                // Define ICE servers. Add a TURN server if you have one for better connectivity.
+                // Example with a public STUN server (always recommended):
+                const iceServers = [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    // IMPORTANT: Replace with your actual TURN server details if you have one.
+                    // {
+                    //     urls: 'turn:YOUR_TURN_SERVER_URL:YOUR_TURN_SERVER_PORT',
+                    //     username: 'YOUR_TURN_USERNAME',
+                    //     credential: 'YOUR_TURN_PASSWORD'
+                    // }
+                ];
+
+                const pc = new RTCPeerConnection({ iceServers: iceServers });
 
                 pc.onicecandidate = async (event) => {
                     if (event.candidate) {
+                        console.log("DEBUG PROFUNDO: ICE candidate generated:", event.candidate.type, event.candidate.protocol, event.candidate.address);
                         // Use the userId passed as argument
                         console.log("DEBUG PROFUNDO: ICE candidate generated. currentAuthUserId (passed to PC):", currentAuthUserId);
 
@@ -1007,7 +1016,13 @@
                             senderId: currentAuthUserId, // Use directly obtained user ID
                             timestamp: window.serverTimestamp(),
                         });
+                    } else {
+                        console.log("DEBUG PROFUNDO: ICE gathering complete.");
                     }
+                };
+
+                pc.onicegatheringstatechange = () => {
+                    console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState changed to: ${pc.iceGatheringState}`);
                 };
 
                 pc.ontrack = (event) => {
