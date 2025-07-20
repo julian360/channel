@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v44 (WebRTC Streaming - MediaStream Active Fix)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v46 (WebRTC Streaming - Offer Creation Debug)");
 
 
         // Helper function to generate a random username for new users
@@ -1734,6 +1734,7 @@
                                         ref={localVideoRef}
                                         autoPlay
                                         muted
+                                        playsInline // ADDED: playsInline for iOS
                                         className="absolute inset-0 w-full h-full object-contain"
                                         style={{ transform: 'scaleX(-1)' }} // Mirror local video
                                     ></video>
@@ -1742,6 +1743,7 @@
                                     <video
                                         ref={remoteVideoRef}
                                         autoPlay
+                                        playsInline // ADDED: playsInline for iOS
                                         className="absolute inset-0 w-full h-full object-contain"
                                     ></video>
                                 )}
