@@ -523,7 +523,7 @@
 
             React.useEffect(() => {
                 if (isAuthReady && db && activeChannel && currentPage === 'channel') {
-                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const normalizedActiveChannel = activeChannel.name.toLowerCase();
                     const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
                     const q = window.query(messagesColRef, window.orderBy('timestamp'));
 
@@ -1920,7 +1920,7 @@
                     <div className="h-full bg-white p-4 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-6 mb-2 pb-1 relative">
                         <h1
                             className="text-4xl font-extrabold text-gray-800 mb-2 cursor-pointer"
-                            onClick={() => copyToClipboard(activeChannel.name)} {/* Use activeChannel.name */}
+                            onClick={() => copyToClipboard(activeChannel.name)}
                         >
                             Channel: <span className="text-blue-600">{activeChannel.name}</span> {/* Use activeChannel.name */}
                         </h1>
