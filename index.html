@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v37 (WebRTC Streaming - Refined onSnapshot and Firestore Write Check)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v38 (WebRTC Streaming - Enhanced Firestore Write Verification and onSnapshot Trace)");
 
 
         // Helper function to generate a random username for new users
@@ -585,14 +585,16 @@
                             // Logic for streamer to ensure their local state matches Firestore (if they stopped it elsewhere)
                             // This also handles cases where the streamer might have left the channel or their stream died
                             else if (!isChannelStreamingInFirestore && currentStreamerIdInFirestore === userId && isStreaming) {
+                                console.warn("DEBUG PROFUNDO: Streamer local state is active, but Firestore shows inactive. Forcing local stream stop.");
+                                console.trace("DEBUG PROFUNDO: Call stack for forced stopStreaming (streamer side)."); // NEW TRACE
                                 showMessage("Tu stream ha terminado o ha sido desconectado (detectado por Firestore).", 'info');
-                                console.log("DEBUG PROFUNDO: Stream ended (streamer side, detected via Firestore).");
                                 setTimeout(() => stopStreaming(), 500);
                             }
                             // Edge case: If we are a streamer and Firestore *still* shows false, but our local state is true,
                             // it means the Firestore update failed silently or was overwritten. Force stop local stream.
                             else if (isStreaming && currentStreamerIdInFirestore === userId && !isChannelStreamingInFirestore) {
                                 console.warn("DEBUG PROFUNDO: Streamer local state is active, but Firestore shows inactive. Forcing local stream stop.");
+                                console.trace("DEBUG PROFUNDO: Call stack for forced stopStreaming (streamer side - edge case)."); // NEW TRACE
                                 showMessage("Tu stream no se pudo iniciar correctamente en Firestore. Deteniendo el stream.", 'error');
                                 setTimeout(() => stopStreaming(), 500);
                             }
