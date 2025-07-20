@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v41 (WebRTC Streaming - Finalizing Streamer onSnapshot Logic)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v42 (WebRTC Streaming - RTCPeerConnection Debugging)");
 
 
         // Helper function to generate a random username for new users
@@ -1016,6 +1016,17 @@
                     setIsReceivingStream(true);
                 };
 
+                // NEW: Add signaling state change listener
+                pc.onsignalingstatechange = () => {
+                    console.log(`DEBUG PROFUNDO: PeerConnection signalingState changed to: ${pc.signalingState}`);
+                };
+
+                // NEW: Add negotiation needed listener
+                pc.onnegotiationneeded = () => {
+                    console.log("DEBUG PROFUNDO: PeerConnection onnegotiationneeded event fired.");
+                };
+
+
                 setPeerConnection(pc);
                 return pc;
             }, [activeChannel, db]);
@@ -1111,10 +1122,8 @@
                     stream.getTracks().forEach(track => pc.addTrack(track, stream));
                     console.log("DEBUG PROFUNDO: startStreaming - Tracks added to peer connection.");
 
-                    // NEW: Log PC states before offer creation
-                    console.log(`DEBUG PROFUNDO: PeerConnection signalingState before offer: ${pc.signalingState}`);
-                    console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState before offer: ${pc.iceGatheringState}`);
-                    console.log("DEBUG PROFUNDO: PeerConnection object before offer:", pc);
+                    // NEW: Log PC states right before offer creation
+                    console.log(`DEBUG PROFUNDO: PeerConnection state BEFORE createOffer - signalingState: ${pc.signalingState}, iceGatheringState: ${pc.iceGatheringState}`);
 
 
                     // NEW: Add try-catch block for offer creation and setting local description
@@ -1251,7 +1260,7 @@
                     setTimeout(() => {
                         setIsStartingStream(false);
                         console.log("DEBUG PROFUNDO: isStartingStream set to false after delay.");
-                    }, 500); // 500ms delay
+                    }, 1000); // 1000ms delay
                 }
             }, [isAuthReady, db, activeChannel, userName, showMessage, setIsLoading, createPeerConnection, localStream, isStreaming, auth, setIsStartingStream, setIsStreaming, setIsStreamer]);
 
