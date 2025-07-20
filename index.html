@@ -1064,7 +1064,8 @@
 
 
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-        const startStreaming = React.useCallback(async () => { // Removed parameters from here
+ // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+        const startStreaming = React.useCallback(async () => {
             console.log("DEBUG PROFUNDO: startStreaming - Initiated.");
 
             // Get the current user ID directly from Firebase Auth right before using it
@@ -1072,7 +1073,7 @@
             const currentAuthUserId = currentAuthUser ? currentAuthUser.uid : null;
 
             // Ensure auth and db are ready and currentAuthUserId is set
-            if (!db || !currentAuthUserId || !activeChannel || !userName) { // Added userName check
+            if (!db || !currentAuthUserId || !activeChannel || !userName) {
                 showMessage("Database or user information not ready. Cannot start stream.", 'error');
                 console.warn("DEBUG PROFUNDO: startStreaming - DB, userId or userName not ready.");
                 return;
@@ -1148,6 +1149,11 @@
                     }
                 };
 
+                // NEW: Add onicegatheringstatechange listener for debugging
+                newPeerConnection.onicegatheringstatechange = () => {
+                    console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState changed to: ${newPeerConnection.iceGatheringState}`);
+                };
+
                 // Handle remote stream when it arrives
                 newPeerConnection.ontrack = (event) => {
                     console.log("DEBUG PROFUNDO: Remote track received:", event.streams[0]);
@@ -1162,26 +1168,56 @@
                 // Create and set offer
                 console.log("DEBUG PROFUNDO: Creating WebRTC offer.");
                 const offer = await newPeerConnection.createOffer();
-                await newPeerConnection.setLocalDescription(offer);
-                console.log("DEBUG PROFUNDO: Local description (offer) set.");
+                console.log("DEBUG PROFUNDO: Offer created:", offer); // NEW LOG
 
-                // Save offer to Firestore
+                // NEW: Specific try-catch for setLocalDescription with a timeout
+                const setLocalDescriptionPromise = newPeerConnection.setLocalDescription(offer);
+                const timeoutPromise = new Promise((resolve, reject) =>
+                    setTimeout(() => reject(new Error('setLocalDescription timed out')), 10000) // 10 seconds timeout
+                );
+
+                try {
+                    console.log("DEBUG PROFUNDO: Attempting to set local description (with timeout).");
+                    await Promise.race([setLocalDescriptionPromise, timeoutPromise]);
+                    console.log("DEBUG PROFUNDO: Offer set as local description. Local description object:", newPeerConnection.localDescription); // NEW LOG
+                    console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription - signalingState: ${newPeerConnection.signalingState}, iceGatheringState: ${newPeerConnection.iceGatheringState}`); // NEW LOG
+                    showMessage("Local description set successfully!", 'success'); // NEW LOG
+                } catch (setLocalDescError) {
+                    console.error(`DEBUG PROFUNDO: Error setting local description (WebRTC): Name: ${setLocalDescError.name}, Message: ${setLocalDescError.message}`, setLocalDescError);
+                    showMessage(`Error al establecer la descripción local del stream: ${setLocalDescError.message}.`, 'error');
+                    // Clean up WebRTC resources on error
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    if (newPeerConnection) { // Use local variable
+                        newPeerConnection.close();
+                    }
+                    setLocalStream(null);
+                    setPeerConnection(null);
+                    setIsStreaming(false);
+                    setIsStreamer(false);
+                    setIsLoading(false);
+                    setIsStartingStream(false);
+                    return; // Exit if setLocalDescription fails
+                }
+
+                // Save offer to Firestore (This block is moved inside the successful try-catch for setLocalDescription)
                 const offerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'offer');
                 await window.setDoc(offerRef, {
-                    sdp: offer.sdp,
-                    type: offer.type,
-                    senderId: currentAuthUserId, // Use currentAuthUserId
-                    senderUserName: userName, // Use userName
+                    sdp: newPeerConnection.localDescription.sdp, // Use localDescription after it's set
+                    type: newPeerConnection.localDescription.type, // Use localDescription after it's set
+                    senderId: currentAuthUserId,
+                    senderUserName: userName,
                     timestamp: window.serverTimestamp()
                 });
-                console.log("DEBUG PROFUNDO: WebRTC offer saved to Firestore:", offer.toJSON());
+                console.log("DEBUG PROFUNDO: WebRTC offer saved to Firestore:", newPeerConnection.localDescription.toJSON());
 
                 // Update channel status in Firestore to indicate streaming
                 const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
                 await window.setDoc(channelDocRef, {
                     isStreaming: true,
-                    streamerId: currentAuthUserId, // Use currentAuthUserId
-                    streamerUserName: userName, // Use userName
+                    streamerId: currentAuthUserId,
+                    streamerUserName: userName,
                     lastActivity: window.serverTimestamp()
                 }, { merge: true });
                 console.log("DEBUG PROFUNDO: Channel status updated in Firestore: isStreaming=true.");
@@ -1194,7 +1230,7 @@
                 // Listen for answers from viewers
                 const answerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'answer');
                 const unsubscribeAnswer = window.onSnapshot(answerRef, async (docSnap) => {
-                    if (docSnap.exists() && docSnap.data().type === 'answer' && docSnap.data().receiverId === currentAuthUserId && !newPeerConnection.currentRemoteDescription) { // Use currentAuthUserId
+                    if (docSnap.exists() && docSnap.data().type === 'answer' && docSnap.data().receiverId === currentAuthUserId && !newPeerConnection.currentRemoteDescription) {
                         const answer = new RTCSessionDescription(docSnap.data());
                         console.log("DEBUG PROFUNDO: Received answer from Firestore:", answer);
                         await newPeerConnection.setRemoteDescription(answer);
@@ -1225,10 +1261,10 @@
                     snapshot.docChanges().forEach(async (change) => {
                         if (change.type === "added") {
                             const candidateData = change.doc.data();
-                            if (candidateData.senderId !== currentAuthUserId) { // Use currentAuthUserId
+                            if (candidateData.senderId !== currentAuthUserId) {
                                 try {
                                     const candidate = new RTCIceCandidate(candidateData);
-                                    if (newPeerConnection.remoteDescription) { // Only add if remote description is set
+                                    if (newPeerConnection.remoteDescription) {
                                         await newPeerConnection.addIceCandidate(candidate);
                                         console.log("DEBUG PROFUNDO: Added viewer candidate (via listener):", candidate);
                                     } else {
@@ -1264,10 +1300,10 @@
             } catch (error) {
                 console.error("DEBUG PROFUNDO: Error starting stream:", error);
                 showMessage("Error al iniciar el stream: " + error.message, 'error');
-                if (stream) { // Use local 'stream' variable
+                if (stream) {
                     stream.getTracks().forEach(track => track.stop());
                 }
-                if (peerConnection) { // Use state 'peerConnection'
+                if (peerConnection) {
                     peerConnection.close();
                 }
                 setLocalStream(null);
@@ -1275,13 +1311,14 @@
                 setIsStreaming(false);
                 setIsReceivingStream(false);
                 setIsStreamer(false);
-                setPeerConnection(null); // Ensure peerConnection is null on error
+                setPeerConnection(null);
             } finally {
-                setIsStartingStream(false); // Reset flag regardless of success or failure
-                setIsLoading(false); // Hide loading spinner
+                setIsStartingStream(false);
+                setIsLoading(false);
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
-        }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]); // Added activeChannel and auth to dependencies
+        }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
+
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
