@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v47 (WebRTC Streaming - MediaStream Active Fix)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v48 (WebRTC Streaming - setLocalDescription Debug)");
 
 
         // Helper function to generate a random username for new users
@@ -1149,11 +1149,34 @@
                         console.log("DEBUG PROFUNDO: startStreaming - Attempting to create offer.");
                         const offer = await pcInstance.createOffer();
                         console.log("DEBUG PROFUNDO: startStreaming - Offer created:", offer);
-                        await pcInstance.setLocalDescription(offer);
-                        console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pcInstance.localDescription); // NEW LOG
-                    } catch (offerError) {
-                        console.error(`DEBUG PROFUNDO: Error creating or setting offer (WebRTC): Name: ${offerError.name}, Message: ${offerError.message}`, offerError);
-                        showMessage(`Error al iniciar stream (WebRTC Offer): ${offerError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
+                        
+                        // NEW: Specific try-catch for setLocalDescription
+                        try {
+                            console.log("DEBUG PROFUNDO: startStreaming - Attempting to set local description.");
+                            await pcInstance.setLocalDescription(offer);
+                            console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pcInstance.localDescription); // NEW LOG
+                        } catch (setLocalDescError) {
+                            console.error(`DEBUG PROFUNDO: Error setting local description (WebRTC): Name: ${setLocalDescError.name}, Message: ${setLocalDescError.message}`, setLocalDescError);
+                            showMessage(`Error al establecer la descripción local del stream: ${setLocalDescError.message}.`, 'error');
+                            // Clean up WebRTC resources on error
+                            if (stream) {
+                                stream.getTracks().forEach(track => track.stop());
+                            }
+                            if (pcInstance) {
+                                pcInstance.close();
+                            }
+                            setLocalStream(null);
+                            setPeerConnection(null);
+                            setIsStreaming(false);
+                            setIsStreamer(false);
+                            setIsLoading(false);
+                            setIsStartingStream(false);
+                            return; // Exit if setLocalDescription fails
+                        }
+
+                    } catch (createOfferError) {
+                        console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC): Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
+                        showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
                         // Clean up WebRTC resources on error
                         if (stream) {
                             stream.getTracks().forEach(track => track.stop());
@@ -1167,7 +1190,7 @@
                         setIsStreamer(false);
                         setIsLoading(false);
                         setIsStartingStream(false);
-                        return; // Exit if offer creation/setting fails
+                        return; // Exit if offer creation fails
                     }
 
 
