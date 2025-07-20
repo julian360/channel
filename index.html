@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v50 (WebRTC Streaming - Final Debug Attempt)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v51 (WebRTC Streaming - setLocalDescription Timeout & State Check)");
 
 
         // Helper function to generate a random username for new users
@@ -1155,6 +1155,8 @@
                             console.log("DEBUG PROFUNDO: startStreaming - Attempting to set local description.");
                             await pcInstance.setLocalDescription(offer);
                             console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pcInstance.localDescription); // NEW LOG
+                            console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`); // NEW LOG
+                            showMessage("Local description set successfully!", 'success'); // NEW LOG
                         } catch (setLocalDescError) {
                             console.error(`DEBUG PROFUNDO: Error setting local description (WebRTC): Name: ${setLocalDescError.name}, Message: ${setLocalDescError.message}`, setLocalDescError);
                             showMessage(`Error al establecer la descripción local del stream: ${setLocalDescError.message}.`, 'error');
