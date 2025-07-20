@@ -10,8 +10,6 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script src="https://unpkg.com/@daily-co/daily-js"></script>
-
     <link rel="manifest" href="/channel/manifest.json">
     <link rel="apple-touch-icon" href="/channel/icons/icon-192x192.png">
     <meta name="theme-color" content="#2563eb">
@@ -80,12 +78,6 @@
         body {
             font-family: 'Inter', sans-serif;
         }
-        /* El iframe de Daily.co llenará su contenedor padre */
-        #daily-video-container iframe {
-            width: 100%;
-            height: 100%;
-            border: none; /* Elimina el borde predeterminado del iframe */
-        }
 
         /* Estilos del spinner */
         .spinner {
@@ -113,6 +105,10 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        // Mensaje de depuración para verificar la versión del código
+        console.log("DEBUG PROFUNDO: Versión del código: 2025-07-20-DailyFix-v16 (Sin Daily.co)");
+
+
         // Función de ayuda para generar un nombre de usuario aleatorio para nuevos usuarios
         const generateRandomUserName = () => {
             const adjectives = ['Veloz', 'Sabio', 'Curioso', 'Audaz', 'Brillante', 'Silencioso', 'Fuerte', 'Gentil', 'Salvaje', 'Lujurioso', 'Hambriento', 'Envidioso', 'Furioso', 'Chad', 'Grande', 'Venoso', 'Oscuro', 'Chiquito'];
@@ -188,14 +184,10 @@
             const [showActivityPanel, setShowActivityPanel] = React.useState(false);
             // NUEVO: Estado para almacenar los miembros del canal (histórico)
             const [channelMembers, setChannelMembers] = React.useState([]);
-            // NUEVO: Estado para almacenar los participantes actualmente online en la llamada Daily.co
-            const [onlineParticipants, setOnlineParticipants] = React.useState(new Set());
+            // ELIMINADO: onlineParticipants ya no es necesario sin Daily.co
 
 
-            // Estados de Daily.co
-            const [dailyCallFrame, setDailyCallFrame] = React.useState(null); // El objeto del marco de llamada de Daily.co
-            const [isStreaming, setIsStreaming] = React.useState(false); // Indica si Daily.co está activo
-            const [dailyError, setDailyError] = React.useState(null); // Para errores específicos de Daily.co
+            // ELIMINADO: Estados de Daily.co (dailyCallFrame, isStreaming, dailyError, isDailySdkLoaded)
 
             // PWA: Estado para el evento beforeinstallprompt
             const [deferredPrompt, setDeferredPrompt] = React.useState(null);
@@ -356,20 +348,10 @@
                 const handlePopState = (event) => {
                     if (event.state && event.state.page) {
                         setCurrentPage(event.state.page);
-                        if (event.state.page === 'home' || event.state.page === 'explore') {
-                            if (dailyCallFrame) {
-                                dailyCallFrame.leave();
-                                setDailyCallFrame(null);
-                                setIsStreaming(false);
-                            }
-                        }
+                        // ELIMINADO: dailyCallFrame.leave() y relacionados
                     } else {
                         setCurrentPage('home');
-                        if (dailyCallFrame) {
-                            dailyCallFrame.leave();
-                            setDailyCallFrame(null);
-                            setIsStreaming(false);
-                        }
+                        // ELIMINADO: dailyCallFrame.leave() y relacionados
                     }
                 };
 
@@ -378,7 +360,7 @@
                 return () => {
                     window.removeEventListener('popstate', handlePopState);
                 };
-            }, [currentPage, dailyCallFrame]);
+            }, [currentPage]); // ELIMINADO: dailyCallFrame de dependencias
 
             React.useEffect(() => {
                 if (currentPage && (!window.history.state || window.history.state.page !== currentPage)) {
@@ -419,7 +401,7 @@
                         createdAt: doc.data().createdAt,
                         createdBy: doc.data().createdBy,
                         creatorUserName: doc.data().creatorUserName,
-                        dailyCoRoomUrl: doc.data().dailyCoRoomUrl,
+                        // ELIMINADO: dailyCoRoomUrl
                         lastActivity: doc.data().lastActivity
                     }));
 
@@ -635,7 +617,7 @@
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
                     const docSnap = await window.getDoc(channelDocRef);
 
-                    const dailyCoRoomUrl = `https://YOUR_DAILY_DOMAIN.daily.co/${normalizedChannelName}-video`; // Asegúrate de reemplazar YOUR_DAILY_DOMAIN
+                    // ELIMINADO: dailyCoRoomUrl
 
                     if (docSnap.exists()) {
                         const existingChannelDisplayName = docSnap.data().displayName || normalizedChannelName;
@@ -650,7 +632,7 @@
                             createdAt: new Date().toISOString(),
                             createdBy: userId,
                             creatorUserName: userName,
-                            dailyCoRoomUrl: dailyCoRoomUrl,
+                            // ELIMINADO: dailyCoRoomUrl
                             lastActivity: window.serverTimestamp()
                         });
                         setActiveChannel(originalChannelInput);
@@ -681,11 +663,7 @@
             const handleJoinChannelFromExplore = React.useCallback(async (channelToJoin) => {
                 setActiveChannel(channelToJoin.name);
                 setCurrentPage('channel');
-                if (dailyCallFrame) {
-                    dailyCallFrame.leave();
-                    setDailyCallFrame(null);
-                    setIsStreaming(false);
-                }
+                // ELIMINADO: dailyCallFrame.leave() y relacionados
                 showMessage(`Te has unido al canal: ${channelToJoin.name}`, 'success');
                 console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Unido al canal:", channelToJoin.name);
 
@@ -702,7 +680,7 @@
                         console.error("DEBUG PROFUNDO: Error al añadir miembro al unirse al canal:", error);
                     }
                 }
-            }, [userName, isAuthReady, db, userId, showMessage, setCurrentPage, setActiveChannel, dailyCallFrame]);
+            }, [userName, isAuthReady, db, userId, showMessage, setCurrentPage, setActiveChannel]); // ELIMINADO: dailyCallFrame de dependencias
 
             const handleSendMessage = React.useCallback(async () => {
                 if (currentMessage.trim() === '') {
@@ -841,136 +819,18 @@
             }, [isAuthReady, db, userId, isTigre, showMessage, setIsLoading, fetchChannels]);
 
 
-            const handleToggleCamera = React.useCallback(async () => {
-                if (!activeChannel || !userId) {
-                    showMessage("No hay un canal activo o el usuario no está autenticado.", 'error');
-                    return;
-                }
+            // ELIMINADO: Efecto para cargar el SDK de Daily.co de forma robusta
 
-                if (dailyCallFrame && isStreaming) {
-                    dailyCallFrame.leave();
-                    showMessage("Cámara apagada.", 'info');
-                } else {
-                    setIsStreaming(true);
-                    setDailyError(null);
-                    setIsLoading(true);
+            // ELIMINADO: handleToggleCamera function
+            const handleToggleCamera = React.useCallback(() => {
+                showMessage("La función de streaming no está habilitada en esta versión.", 'info');
+                // No hace nada
+            }, [showMessage]);
 
-                    try {
-                        const normalizedChannelName = activeChannel.toLowerCase();
-                        const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
-                        const docSnap = await window.getDoc(channelDocRef);
-
-                        if (!docSnap.exists() || !docSnap.data().dailyCoRoomUrl) {
-                            showMessage("No se encontró URL de Daily.co para este canal. Asegúrate de crearla primero (editando la URL de Daily.co en el código).", 'error');
-                            setIsStreaming(false);
-                            setIsLoading(false);
-                            return;
-                        }
-
-                        const dailyCoRoomUrl = `https://YOUR_DAILY_DOMAIN.daily.co/${normalizedChannelName}-video`; // Asegúrate de reemplazar YOUR_DAILY_DOMAIN
-                        const videoContainerElement = document.getElementById('daily-video-container');
-
-                        if (!videoContainerElement) {
-                            showMessage("Error: No se encontró el contenedor de video Daily.co. Verifica el HTML.", 'error');
-                            setIsStreaming(false);
-                            setIsLoading(false);
-                            return;
-                        }
-
-                        const call = window.DailyIframe.createFrame({
-                            parent: videoContainerElement,
-                            showLeaveButton: true,
-                            showParticipantsBar: false,
-                            iframeStyle: {
-                                position: 'relative',
-                                width: '100%',
-                                height: '100%',
-                                border: '0',
-                            },
-                        });
-
-                        setDailyCallFrame(call);
-
-                        await call.join({ url: dailyCoRoomUrl, userName: userName || userId });
-                        showMessage("Cámara encendida. ¡Estás transmitiendo!", 'success');
-
-
-                        call.on('joined-meeting', () => {
-                            console.log('Daily.co: Joined meeting');
-                            if (videoContainerElement) {
-                                videoContainerElement.classList.remove('hidden');
-                            }
-                            setIsLoading(false);
-
-                            const participants = call.participants();
-                            const currentOnline = new Set();
-                            for (const id in participants) {
-                                currentOnline.add(id);
-                            }
-                            setOnlineParticipants(currentOnline);
-                        });
-
-                        call.on('participant-joined', (e) => {
-                            console.log('Daily.co: Participant joined', e.participant.user_id);
-                            setOnlineParticipants(prev => new Set(prev).add(e.participant.user_id));
-                        });
-
-                        call.on('participant-left', (e) => {
-                            console.log('Daily.co: Participant left', e.participant.user_id);
-                            setOnlineParticipants(prev => {
-                                const newSet = new Set(prev);
-                                newSet.delete(e.participant.user_id);
-                                return newSet;
-                            });
-                        });
-
-
-                        call.on('left-meeting', () => {
-                            console.log('Daily.co: Left meeting');
-                            setIsStreaming(false);
-                            setDailyCallFrame(null);
-                            setOnlineParticipants(new Set());
-                            showMessage("La transmisión ha terminado.", 'info');
-                            if (videoContainerElement) {
-                                videoContainerElement.classList.add('hidden');
-                            }
-                            if (call.iframe && call.iframe.parentNode) {
-                                call.iframe.parentNode.removeChild(call.iframe);
-                            }
-                        });
-
-                        call.on('error', (e) => {
-                            console.error('Daily.co Error:', e);
-                            setDailyError(e);
-                            showMessage(`Error de video: ${e.message}`, 'error');
-                            setIsStreaming(false);
-                            setOnlineParticipants(new Set());
-                            if (call.iframe && call.iframe.parentNode) {
-                                call.iframe.parentNode.removeChild(call.iframe);
-                            }
-                            if (videoContainerElement) {
-                                videoContainerElement.classList.add('hidden');
-                            }
-                            setIsLoading(false);
-                        });
-
-                    } catch (error) {
-                        console.error("Error al iniciar la cámara con Daily.co:", error);
-                        setDailyError(error);
-                        setIsStreaming(false);
-                        showMessage(`Error al iniciar la cámara: ${error.message}`, 'error');
-                        setIsLoading(false);
-                    }
-                }
-            }, [activeChannel, userId, dailyCallFrame, isStreaming, showMessage, setIsLoading, setDailyError, userName, db]);
 
             React.useEffect(() => {
-                return () => {
-                    if (dailyCallFrame) {
-                        dailyCallFrame.leave();
-                    }
-                };
-            }, [dailyCallFrame]);
+                // ELIMINADO: dailyCallFrame.leave()
+            }, []); // ELIMINADO: dailyCallFrame de dependencias
 
             const copyToClipboard = React.useCallback((text) => {
                 const textarea = document.createElement('textarea');
@@ -1140,7 +1000,7 @@
                                 <input
                                     type="password"
                                     placeholder="Código de 8 dígitos"
-                                    className="w-full p-3 border border-yellow-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-lg mb-3"
+                                    className="w-full p-3 border border-yellow-400 rounded-lg focus:outline-none focus:ring-2 focus:focus:ring-yellow-500"
                                     value={tigreCode}
                                     onChange={(e) => setTigreCode(e.target.value)}
                                     maxLength="8"
@@ -1229,6 +1089,7 @@
                             </button>
                             {showOptionsMenu && (
                                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                                    {/* Botón "Stream" ahora no hace nada */}
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { handleToggleCamera(); setShowOptionsMenu(false); }}>Stream 🎥</button>
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Adjuntar Archivo 📎</button>
                                     <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { setShowActivityPanel(true); setShowOptionsMenu(false); }}>Actividad 👥</button>
@@ -1236,8 +1097,7 @@
                             )}
                         </div>
 
-                        <div id="daily-video-container" className={`relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-4 ${isStreaming ? 'block' : 'hidden'}`}>
-                        </div>
+                        {/* ELIMINADO: div #daily-video-container */}
 
                         <div className="mb-1 w-full bg-gray-100 p-1 rounded-xl shadow-inner border border-gray-200">
                             <div className="h-[70vh] md:h-[66vh] bg-white rounded-lg p-2 overflow-y-auto border border-gray-300 mb-1 flex flex-col" style={{ minHeight: '100px' }}>
@@ -1292,7 +1152,7 @@
                             <input
                                 type="text"
                                 placeholder="Escribe tu mensaje..."
-                                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:focus:ring-blue-500"
                                 value={currentMessage}
                                 onChange={(e) => setCurrentMessage(e.target.value)}
                                 onKeyPress={(e) => {
@@ -1311,11 +1171,7 @@
                             />
                         </div>
 
-                        {dailyError && (
-                            <div className="mt-4 text-red-500">
-                                Error de Daily.co: {dailyError.message || "Un error desconocido ocurrió."}
-                            </div>
-                        )}
+                        {/* ELIMINADO: dailyError display */}
                     </div>
 
                     {showActivityPanel && (
@@ -1337,9 +1193,7 @@
                                             {channelMembers.map((member) => (
                                                 <li key={member.id} className="flex items-center text-gray-700">
                                                     <span className="font-medium">{member.userName}</span>
-                                                    {onlineParticipants.has(member.id) && (
-                                                        <span className="ml-2 w-3 h-3 bg-green-500 rounded-full" title="Online"></span>
-                                                    )}
+                                                    {/* ELIMINADO: onlineParticipants */}
                                                 </li>
                                             ))}
                                         </ul>
