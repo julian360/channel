@@ -1230,13 +1230,16 @@
                 // Normalize activeChannel for Firestore paths
                 const normalizedActiveChannel = activeChannel.toLowerCase();
 
-                // Handle ICE candidates
+                // Handle ICE candidates - NOW SAVING TO UNIFIED CANDIDATES COLLECTION
                 pcInstance.onicecandidate = async (event) => {
                     if (event.candidate) {
                         console.log("DEBUG PROFUNDO: ICE Candidate found:", event.candidate);
-                        // Save ICE candidate to Firestore
-                        const candidateRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/${currentAuthUserId}/candidates`, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
-                        await window.setDoc(candidateRef, event.candidate.toJSON());
+                        // Save ICE candidate to Firestore with senderId
+                        const candidateRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
+                        await window.setDoc(candidateRef, {
+                            ...event.candidate.toJSON(),
+                            senderId: currentAuthUserId // Add senderId to the candidate document
+                        });
                         console.log("DEBUG PROFUNDO: ICE Candidate saved to Firestore:", event.candidate.toJSON());
                     } else {
                         console.log("DEBUG PROFUNDO: All ICE candidates gathered.");
@@ -1265,14 +1268,17 @@
                         showMessage("Respuesta de espectador recibida.", 'info');
 
                         // After setting the answer, collect and add ICE candidates from viewer
-                        const viewerCandidatesRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/${docSnap.data().senderId}/candidates`);
-                        const candidateSnapshot = await window.getDocs(viewerCandidatesRef);
+                        // NOW LISTENING TO THE UNIFIED CANDIDATES COLLECTION
+                        const channelCandidatesRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`);
+                        const candidateSnapshot = await window.getDocs(channelCandidatesRef);
                         candidateSnapshot.forEach(async (candidateDoc) => {
-                            if (candidateDoc.exists()) {
+                            if (candidateDoc.exists() && candidateDoc.data().senderId !== currentAuthUserId) { // Filter out own candidates
                                 try {
                                     const candidate = new RTCIceCandidate(candidateDoc.data());
                                     await pcInstance.addIceCandidate(candidate);
                                     console.log("DEBUG PROFUNDO: Added viewer ICE candidate:", candidate);
+                                    // Optionally delete the candidate after adding it to avoid processing duplicates
+                                    await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`, candidateDoc.id));
                                 } catch (e) {
                                     console.error("DEBUG PROFUNDO: Error adding viewer ICE candidate:", e);
                                 }
@@ -1283,17 +1289,19 @@
                     console.error("DEBUG PROFUNDO: Error listening for answer:", error);
                 });
 
-                // Listen for candidates from viewers (after answer is set)
-                const viewerCandidatesListener = window.onSnapshot(window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/viewerCandidates`), (snapshot) => {
+                // Listen for candidates from viewers (after answer is set) - NOW LISTENING TO UNIFIED CANDIDATES COLLECTION
+                const channelCandidatesListener = window.onSnapshot(window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`), (snapshot) => {
                     snapshot.docChanges().forEach(async (change) => {
                         if (change.type === "added") {
                             const candidateData = change.doc.data();
-                            if (candidateData.senderId !== currentAuthUserId) {
+                            if (candidateData.senderId !== currentAuthUserId) { // Ensure it's not our own candidate echoing back
                                 try {
                                     const candidate = new RTCIceCandidate(candidateData);
-                                    if (pcInstance.remoteDescription) {
+                                    if (pcInstance.remoteDescription) { // Only add if remote description is set
                                         await pcInstance.addIceCandidate(candidate);
                                         console.log("DEBUG PROFUNDO: Added viewer candidate (via listener):", candidate);
+                                        // Optionally delete the candidate after adding it to avoid processing duplicates
+                                        await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc/candidates`, change.doc.id));
                                     } else {
                                         console.log("DEBUG PROFUNDO: Remote description not set yet, deferring viewer candidate:", candidate);
                                     }
@@ -1315,13 +1323,13 @@
                         showMessage("Stream desconectado debido a un error de conexión.", 'error');
                         setTimeout(() => stopStreaming(), 500);
                         unsubscribeAnswer();
-                        viewerCandidatesListener(); // Unsubscribe candidates listener
+                        channelCandidatesListener(); // Unsubscribe candidates listener
                     }
                 };
 
                 return () => {
                     unsubscribeAnswer();
-                    viewerCandidatesListener(); // Unsubscribe candidates listener
+                    channelCandidatesListener(); // Unsubscribe candidates listener
                 };
 
             } catch (error) {
@@ -1345,7 +1353,6 @@
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
         }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
-
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
