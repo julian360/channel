@@ -1072,9 +1072,8 @@
       // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
         // Version: 2025-07-20-DailyFix-v59
        // Version: 2025-07-20-DailyFix-v60
-         // Version: 2025-07-20-DailyFix-v65
-        const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v65");
+         const startStreaming = React.useCallback(async () => {
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v63");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1153,10 +1152,6 @@
                     console.log("DEBUG PROFUNDO: Added local track to peer connection:", track.kind);
                 });
 
-                // NEW: Small delay after adding tracks to allow PC to register them fully
-                console.log("DEBUG PROFUNDO: Adding small delay after adding tracks...");
-                await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
-
                 // Normalize activeChannel for Firestore paths
                 const normalizedActiveChannel = activeChannel.toLowerCase();
 
@@ -1199,15 +1194,15 @@
                 console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers());
                 console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, tracks: ${stream.getTracks().length}`);
 
-                // NEW: Robust check for stream and track readiness before creating offer - PRIORITIZING TRACK READYSTATE
+                // NEW: Robust check for stream and track readiness before creating offer
                 let offer;
-                const maxReadinessRetries = 20; // Increased retries
+                const maxReadinessRetries = 20; // Increased retries for readiness
                 const readinessRetryDelayMs = 100; // Shorter delay for readiness checks
 
                 for (let i = 0; i < maxReadinessRetries; i++) {
                     console.log(`DEBUG PROFUNDO: Checking stream readiness (Attempt ${i + 1}/${maxReadinessRetries})...`);
 
-                    // Check overall stream state (active and tracks count)
+                    // Check overall stream state
                     if (!stream.active || stream.getTracks().length === 0) {
                          const errorMessage = `Media stream is not active or has no tracks. Active: ${stream.active}, Tracks: ${stream.getTracks().length}.`;
                          console.warn("DEBUG PROFUNDO: " + errorMessage);
@@ -1219,19 +1214,17 @@
                          continue;
                     }
 
-                    // Check individual track readinessState - THIS IS THE PRIMARY CHECK NOW
+                    // Check individual track readinessState
                     const allTracksReady = stream.getTracks().every(track => {
                         console.log(`DEBUG PROFUNDO: Track ${track.kind} readyState: ${track.readyState}`);
                         return track.readyState === 'live';
                     });
 
-                    if (allTracksReady) { // If all individual tracks are 'live', consider the stream ready
-                        console.log("DEBUG PROFUNDO: All individual media tracks are ready.");
-                        // Also log the stream's readyState for continued observation, even if it's undefined
-                        console.log(`DEBUG PROFUNDO: Final Media Stream readyState (for info): ${stream.readyState}`);
+                    if (allTracksReady && stream.readyState === 'live') { // Ensure both stream and tracks are 'live'
+                        console.log("DEBUG PROFUNDO: Media stream and all tracks are ready.");
                         break; // All ready, exit readiness loop
                     } else {
-                        const errorMessage = `Not all media tracks are ready. Waiting for readyState 'live'.`;
+                        const errorMessage = `Media stream or not all tracks are ready. Stream readyState: ${stream.readyState}, All tracks live: ${allTracksReady}. Waiting for readyState 'live'.`;
                         console.warn("DEBUG PROFUNDO: " + errorMessage);
                         if (i === maxReadinessRetries - 1) {
                             showMessage(errorMessage + " Please ensure your camera/microphone are fully initialized.", 'error');
@@ -1382,53 +1375,301 @@
                                     }
                                 } catch (e) {
                                     console.error("DEBUG PROFUNDO: Error adding viewer candidate (via listener):", e);
-                                    }
                                 }
+                            }
+                        }
+                    });
+                }, (error) => {
+                    console.error("DEBUG PROFUNDO: Error listening for viewer candidates:", error);
+                });
+
+                // Clean up listeners when component unmounts or stream stops
+                pcInstance.onconnectionstatechange = () => {
+                    console.log(`DEBUG PROFUNDO: RTCPeerConnection state: ${pcInstance.connectionState}`);
+                    if (pcInstance.connectionState === 'disconnected' || pcInstance.connectionState === 'failed' || pcInstance.connectionState === 'closed') {
+                        console.log("DEBUG PROFUNDO: PeerConnection disconnected/failed/closed. Stopping stream.");
+                        showMessage("Stream desconectado debido a un error de conexión.", 'error');
+                        setTimeout(() => stopStreaming(), 500);
+                        unsubscribeAnswer();
+                        channelCandidatesListener(); // Unsubscribe candidates listener
+                    }
+                };
+
+                return () => {
+                    unsubscribeAnswer();
+                    channelCandidatesListener(); // Unsubscribe candidates listener
+                };
+
+            } catch (error) {
+                console.error("DEBUG PROFUNDO: Error starting stream:", error);
+                showMessage("Error al iniciar el stream: " + error.message, 'error');
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                if (pcInstance) { // Use local 'pcInstance'
+                    pcInstance.close();
+                }
+                setLocalStream(null);
+                setRemoteStream(null);
+                setIsStreaming(false);
+                setIsReceivingStream(false);
+                setIsStreamer(false);
+                setPeerConnection(null);
+            } finally {
+                setIsStartingStream(false);
+                setIsLoading(false);
+                console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
+            }
+        }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
+
+            const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
+                console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
+                // Get the current user ID directly from Firebase Auth right before using it
+                const currentAuthUser = auth.currentUser; // Use auth from state
+                const currentAuthUserId = currentAuthUser ? currentAuthUser.uid : null;
+
+                if (!isAuthReady || !db || !currentAuthUserId || !channelName || currentAuthUserId === streamerId || isReceivingStream) {
+                    console.log("DEBUG PROFUNDO: Not ready to receive stream or already receiving or is streamer. currentAuthUserId:", currentAuthUserId, "streamerId:", streamerId, "isReceivingStream:", isReceivingStream);
+                    return;
+                }
+
+                setIsLoading(true);
+                console.log("DEBUG PROFUNDO: startReceivingStream - isLoading set to true.");
+                let pcInstance; // Use a local variable for the PC instance
+                try {
+                    const normalizedChannelName = channelName.toLowerCase();
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Attempting to get channel doc for offer.");
+                    const docSnap = await window.getDoc(channelDocRef);
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Channel doc snap received.");
+
+                    if (!docSnap.exists() || !docSnap.data().isStreaming || !docSnap.data().offer) {
+                        showMessage("No active stream found in this channel.", 'info');
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    const offer = new RTCSessionDescription(docSnap.data().offer);
+                    // Initialize peerConnection only if it doesn't exist
+                    if (!peerConnection) {
+                        pcInstance = createPeerConnection(currentAuthUserId); // Assign to local variable
+                        setPeerConnection(pcInstance); // Set the state here
+                        console.log("DEBUG PROFUNDO: startReceivingStream - New PeerConnection created and set to state.");
+                    } else {
+                        pcInstance = peerConnection; // Use existing peerConnection from state
+                        console.log("DEBUG PROFUNDO: startReceivingStream - Using existing PeerConnection from state.");
+                    }
+
+                    await pcInstance.setRemoteDescription(offer); // Use pcInstance
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Remote description set.");
+                    const answer = await pcInstance.createAnswer(); // Use pcInstance
+                    await pcInstance.setLocalDescription(answer); // Use pcInstance
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Answer created and set as local description.");
+
+                    // Send answer back to streamer
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Sending answer to streamer.");
+                    try {
+                        await window.setDoc(channelDocRef, { answer: answer.toJSON() }, { merge: true });
+                        console.log("DEBUG PROFUNDO: Sent answer to streamer.");
+                    } catch (firestoreError) {
+                        console.error("DEBUG PROFUNDO: Firestore Error sending answer to streamer:", firestoreError);
+                        showMessage(`Error al unirse al stream: ${firestoreError.message}. Revisa tus reglas de Firestore.`, 'error');
+                        if (pcInstance) { pcInstance.close(); } // Use pcInstance
+                        setPeerConnection(null);
+                        setRemoteStream(null);
+                        setIsReceivingStream(false);
+                        setIsLoading(false);
+                        return;
+                    }
+
+
+                    // Listen for ICE candidates from streamer
+                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/iceCandidates`);
+                    const unsubscribeCandidates = window.onSnapshot(iceCandidatesColRef, (snapshot) => {
+                        snapshot.docChanges().forEach(async (change) => {
+                            if (change.type === 'added' && change.doc.data().senderId === streamerId) {
+                                const candidate = new RTCIceCandidate(change.doc.data().candidate);
+                                console.log("DEBUG PROFUNDO: Adding remote ICE candidate:", candidate);
+                                await pcInstance.addIceCandidate(candidate); // Use pcInstance
+                                // Delete the candidate after adding it
+                                await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, change.doc.id));
                             }
                         });
                     }, (error) => {
-                        console.error("DEBUG PROFUNDO: Error listening for viewer candidates:", error);
+                        console.error("DEBUG PROFUNDO: Error listening for ICE candidates (viewer):", error);
                     });
 
-                    // Clean up listeners when component unmounts or stream stops
-                    pcInstance.onconnectionstatechange = () => {
-                        console.log(`DEBUG PROFUNDO: RTCPeerConnection state: ${pcInstance.connectionState}`);
-                        if (pcInstance.connectionState === 'disconnected' || pcInstance.connectionState === 'failed' || pcInstance.connectionState === 'closed') {
-                            console.log("DEBUG PROFUNDO: PeerConnection disconnected/failed/closed. Stopping stream.");
-                            showMessage("Stream desconectado debido a un error de conexión.", 'error');
-                            setTimeout(() => stopStreaming(), 500);
-                            unsubscribeAnswer();
-                            channelCandidatesListener(); // Unsubscribe candidates listener
-                        }
-                    };
+                    // setPeerConnection(pcInstance); // This is now set earlier
+                    setIsReceivingStream(true);
+                    showMessage("Joining stream...", 'success');
+                    console.log("DEBUG PROFUNDO: Started receiving stream.");
+                } catch (error) {
+                    console.error(`DEBUG PROFUNDO: Error receiving stream (general catch block): Name: ${error.name}, Message: ${error.message}`, error);
+                    showMessage(`Error joining stream: ${error.message}`, 'error');
+                    if (peerConnection) { // Still use state for final cleanup
+                        peerConnection.close();
+                        setPeerConnection(null);
+                    }
+                    setRemoteStream(null);
+                    setIsReceivingStream(false);
+                    setIsLoading(false); // Ensure isLoading is false on error
+                } finally {
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Finally block executed. Setting isLoading to false.");
+                    setIsLoading(false);
+                }
+            }, [isAuthReady, db, showMessage, setIsLoading, createPeerConnection, peerConnection, isReceivingStream, auth]);
 
-                    return () => {
-                        unsubscribeAnswer();
-                        channelCandidatesListener(); // Unsubscribe candidates listener
-                    };
+
+            const stopStreaming = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: stopStreaming - Initiated.");
+                if (peerConnection) {
+                    peerConnection.close();
+                    setPeerConnection(null);
+                    console.log("DEBUG PROFUNDO: stopStreaming - Peer connection closed.");
+                }
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    setLocalStream(null);
+                    console.log("DEBUG PROFUNDO: stopStreaming - Local stream tracks stopped.");
+                }
+                setRemoteStream(null);
+                setIsStreaming(false);
+                setIsReceivingStream(false);
+                setIsStreamer(false);
+                console.log("DEBUG PROFUNDO: stopStreaming - Streaming states reset.");
+
+                // Update Firestore to indicate no active stream
+                if (db && activeChannel) {
+                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+                    try {
+                        console.log("DEBUG PROFUNDO: stopStreaming - Updating channel doc in Firestore.");
+                        await window.setDoc(channelDocRef, {
+                            isStreaming: false,
+                            streamerId: null,
+                            streamerUserName: null,
+                            offer: window.deleteField(), // Remove offer
+                            answer: window.deleteField() // Remove answer
+                        }, { merge: true });
+                        // Clear all ICE candidates for this channel
+                        const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`);
+                        const snapshot = await window.getDocs(iceCandidatesColRef);
+                        const deletePromises = [];
+                        snapshot.forEach(doc => {
+                            deletePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, doc.id)));
+                        });
+                        console.log(`DEBUG PROFUNDO: stopStreaming - Deleting ${deletePromises.length} ICE candidates.`);
+                        await Promise.all(deletePromises);
+
+                        showMessage("Streaming stopped and channel status updated.", 'info');
+                        console.log("DEBUG PROFUNDO: Streaming stopped, channel status in Firestore cleared.");
+                    } catch (error) {
+                        console.error("DEBUG PROFUNDO: Error updating channel streaming status in Firestore:", error);
+                        showMessage("Error stopping stream status in Firestore.", 'error');
+                    }
+                }
+            }, [peerConnection, localStream, activeChannel, db, showMessage]);
+
+
+            // Effect to assign streams to video elements
+            React.useEffect(() => {
+                if (localVideoRef.current && localStream) {
+                    localVideoRef.current.srcObject = localStream;
+                }
+            }, [localStream]);
+
+            React.useEffect(() => {
+                if (remoteVideoRef.current && remoteStream) {
+                    remoteVideoRef.current.srcObject = remoteStream;
+                }
+            }, [remoteStream]);
+
+
+            const copyToClipboard = React.useCallback((text) => {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    showMessage(`"${text}" copied to clipboard!`, 'success');
+                } catch (err) {
+                    console.error('Error copying to clipboard:', err);
+                    showMessage('Error copying to clipboard.', 'error');
+                }
+                document.body.removeChild(textarea);
+            }, [showMessage]);
+
+            const handleAttachFile = React.useCallback(() => {
+                if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                }
+                setShowOptionsMenu(false);
+            }, []);
+
+
+            const onFileSelected = React.useCallback(async (event) => {
+                const file = event.target.files[0];
+                if (!file) {
+                    return;
+                }
+
+                if (!isAuthReady || !db || !userId || !activeChannel) {
+                    showMessage("Application not ready to upload files. Please try again.", 'error');
+                    return;
+                }
+
+                setIsLoading(true);
+
+                // --- Cloudinary Configuration (REPLACE THESE WITH YOURS) ---
+                const cloudName = 'dq527zvti'; // Your Cloudinary Cloud name
+                const unsignedUploadPreset = 'jlchannel'; // The unsigned upload preset you created in Cloudinary
+                // -------------------------------------------------------------
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', unsignedUploadPreset);
+
+                try {
+                    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        console.error("Error uploading file to Cloudinary:", errorData);
+                        showMessage(`Error uploading file: ${errorData.error.message || 'Unknown error'}`, 'error');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const downloadURL = data.secure_url;
+                    console.log('File available on Cloudinary:', downloadURL);
+
+                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
+                    await window.addDoc(messagesColRef, {
+                        text: downloadURL,
+                        senderId: userId,
+                        senderUserName: userName,
+                        timestamp: window.serverTimestamp(),
+                        fileUrl: downloadURL,
+                        fileName: file.name,
+                        fileType: file.type,
+                    });
+
+                    setCurrentMessage('');
+                    showMessage('File successfully uploaded and sent to chat.', 'success');
+                    scrollToBottom();
 
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error starting stream:", error);
-                    showMessage("Error al iniciar el stream: " + error.message, 'error');
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
-                    if (pcInstance) { // Use local 'pcInstance'
-                        pcInstance.close();
-                    }
-                    setLocalStream(null);
-                    setRemoteStream(null);
-                    setIsStreaming(false);
-                    setIsReceivingStream(false);
-                    setIsStreamer(false);
-                    setPeerConnection(null);
+                    console.error("Error in Cloudinary upload (general catch):", error);
+                    showMessage(`Error initiating upload: ${error.message || 'Unknown error'}`, 'error');
                 } finally {
-                    setIsStartingStream(false);
                     setIsLoading(false);
-                    console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
                 }
-            }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
-
+            }, [activeChannel, isAuthReady, db, userId, userName, showMessage, setIsLoading, scrollToBottom]);
 
 
             // PWA: Handler for the install button
