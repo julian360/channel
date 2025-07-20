@@ -1066,9 +1066,11 @@
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
 // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-        // Version: 2025-07-20-DailyFix-v56
+       
+        // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+        // Version: 2025-07-20-DailyFix-v57
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v56");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v57");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1185,9 +1187,10 @@
                 };
 
                 // NEW: Explicitly create and set offer after adding tracks
-                console.log("DEBUG PROFUNDO: Explicitly creating WebRTC offer. Current signalingState:", pcInstance.signalingState);
+                console.log("DEBUG PROFUNDO: BEFORE createOffer. Current signalingState:", pcInstance.signalingState); // NEW LOG
+                console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers()); // NEW LOG
                 const offer = await pcInstance.createOffer();
-                console.log("DEBUG PROFUNDO: Offer created:", offer);
+                console.log("DEBUG PROFUNDO: AFTER createOffer. Offer created:", offer); // NEW LOG
 
                 // Specific try-catch for setLocalDescription with a timeout
                 const setLocalDescriptionPromise = pcInstance.setLocalDescription(offer);
@@ -1346,6 +1349,7 @@
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
         }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
+
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
