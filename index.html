@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v36 (WebRTC Streaming - More Granular Error Logging and Firestore Update Check)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v37 (WebRTC Streaming - Refined onSnapshot and Firestore Write Check)");
 
 
         // Helper function to generate a random username for new users
@@ -556,47 +556,52 @@
                     const unsubscribeChannelStatus = window.onSnapshot(channelDocRef, async (docSnap) => {
                         if (docSnap.exists()) {
                             const channelData = docSnap.data();
-                            const currentStreamerId = channelData.streamerId;
-                            const isChannelStreaming = channelData.isStreaming || false;
+                            const currentStreamerIdInFirestore = channelData.streamerId;
+                            const isChannelStreamingInFirestore = channelData.isStreaming || false;
 
-                            console.log("DEBUG PROFUNDO: onSnapshot - Channel data from Firestore:", channelData); // Log the full data
-                            console.log("DEBUG PROFUNDO: onSnapshot - Channel streaming status updated:", isChannelStreaming, "Streamer ID:", currentStreamerId, "Current User ID:", userId);
+                            console.log("DEBUG PROFUNDO: onSnapshot - Channel data from Firestore:", channelData);
+                            console.log("DEBUG PROFUNDO: onSnapshot - Channel streaming status in Firestore:", isChannelStreamingInFirestore, "Streamer ID in Firestore:", currentStreamerIdInFirestore, "Current User ID:", userId);
                             console.log("DEBUG PROFUNDO: onSnapshot - Local isStreaming:", isStreaming, "Local isReceivingStream:", isReceivingStream, "Local isStreamer:", isStreamer);
 
-                            // Only proceed if we are NOT in the middle of starting a stream
-                            if (isStartingStream) {
-                                console.log("DEBUG PROFUNDO: onSnapshot - isStartingStream is true. Ignoring channel status update to prevent race condition.");
-                                return;
-                            }
-
-                            // Logic for viewers to join a stream
-                            if (isChannelStreaming && currentStreamerId && currentStreamerId !== userId && !isReceivingStream) {
-                                showMessage(`Stream activo en este canal por ${channelData.streamerUserName || 'alguien'}. Uniéndote como espectador...`, 'info');
-                                console.log("DEBUG PROFUNDO: Attempting to join stream as viewer.");
-                                await startReceivingStream(normalizedActiveChannel, currentStreamerId);
+                            // Logic for viewers:
+                            // If channel is streaming, there's a streamer ID, and it's not us, AND we are not already receiving a stream
+                            if (isChannelStreamingInFirestore && currentStreamerIdInFirestore && currentStreamerIdInFirestore !== userId && !isReceivingStream) {
+                                // Add a check here to ensure we are not in the process of starting our own stream.
+                                // This is where isStartingStream is useful.
+                                if (!isStartingStream) {
+                                    showMessage(`Stream activo en este canal por ${channelData.streamerUserName || 'alguien'}. Uniéndote como espectador...`, 'info');
+                                    console.log("DEBUG PROFUNDO: Attempting to join stream as viewer.");
+                                    await startReceivingStream(normalizedActiveChannel, currentStreamerIdInFirestore);
+                                } else {
+                                    console.log("DEBUG PROFUNDO: onSnapshot - isStartingStream is true. Ignoring viewer join to prevent race condition during streamer setup.");
+                                }
                             }
                             // Logic for viewers to stop receiving if stream ends
-                            else if (!isChannelStreaming && userId !== currentStreamerId && isReceivingStream) {
+                            else if (!isChannelStreamingInFirestore && currentStreamerIdInFirestore !== userId && isReceivingStream) {
                                 showMessage("El stream ha terminado.", 'info');
                                 console.log("DEBUG PROFUNDO: Stream ended (viewer side).");
-                                // Add a small delay here to prevent race conditions
-                                setTimeout(() => stopStreaming(), 500); // Delay stopStreaming by 500ms
+                                setTimeout(() => stopStreaming(), 500);
                             }
                             // Logic for streamer to ensure their local state matches Firestore (if they stopped it elsewhere)
                             // This also handles cases where the streamer might have left the channel or their stream died
-                            else if (!isChannelStreaming && currentStreamerId === userId && isStreaming) {
-                                showMessage("Tu stream ha terminado o ha sido desconectado.", 'info');
+                            else if (!isChannelStreamingInFirestore && currentStreamerIdInFirestore === userId && isStreaming) {
+                                showMessage("Tu stream ha terminado o ha sido desconectado (detectado por Firestore).", 'info');
                                 console.log("DEBUG PROFUNDO: Stream ended (streamer side, detected via Firestore).");
-                                // Add a small delay here to prevent race conditions
-                                setTimeout(() => stopStreaming(), 500); // Delay stopStreaming by 500ms
+                                setTimeout(() => stopStreaming(), 500);
+                            }
+                            // Edge case: If we are a streamer and Firestore *still* shows false, but our local state is true,
+                            // it means the Firestore update failed silently or was overwritten. Force stop local stream.
+                            else if (isStreaming && currentStreamerIdInFirestore === userId && !isChannelStreamingInFirestore) {
+                                console.warn("DEBUG PROFUNDO: Streamer local state is active, but Firestore shows inactive. Forcing local stream stop.");
+                                showMessage("Tu stream no se pudo iniciar correctamente en Firestore. Deteniendo el stream.", 'error');
+                                setTimeout(() => stopStreaming(), 500);
                             }
                         }
                     }, (error) => {
                         console.error("DEBUG PROFUNDO: Error fetching channel streaming status:", error);
-                        // If there's an error fetching status, we might want to stop any active streams
                         if (isStreaming || isReceivingStream) {
                             showMessage("Error al obtener el estado del stream. Deteniendo el stream.", 'error');
-                            setTimeout(() => stopStreaming(), 500); // Delay stopStreaming by 500ms
+                            setTimeout(() => stopStreaming(), 500);
                         }
                     });
 
@@ -1151,6 +1156,14 @@
                         console.log("DEBUG PROFUNDO: startStreaming - Preparing to send payload to Firestore:", payload); // NEW LOG
                         await window.setDoc(channelDocRef, payload, { merge: true });
                         console.log("DEBUG PROFUNDO: startStreaming - Channel doc updated successfully in Firestore.");
+
+                        // NEW: Fetch and log the document immediately after update
+                        const updatedDocSnap = await window.getDoc(channelDocRef);
+                        if (updatedDocSnap.exists()) {
+                            console.log("DEBUG PROFUNDO: startStreaming - Channel doc content AFTER update:", updatedDocSnap.data());
+                        } else {
+                            console.warn("DEBUG PROFUNDO: startStreaming - Channel doc does not exist immediately after update.");
+                        }
 
                         // *** IMPORTANT: Set local states AFTER successful Firestore update ***
                         setIsStreaming(true);
