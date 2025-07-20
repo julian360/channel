@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v34 (WebRTC Streaming - Enhanced Error Logging)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v35 (WebRTC Streaming - More Granular Error Logging)");
 
 
         // Helper function to generate a random username for new users
@@ -1012,6 +1012,20 @@
                 return pc;
             }, [activeChannel, db]);
 
+            // NEW: Function to request media permissions explicitly
+            const requestMediaPermissions = React.useCallback(async () => {
+                try {
+                    console.log("DEBUG PROFUNDO: Requesting media permissions explicitly...");
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    stream.getTracks().forEach(track => track.stop()); // Stop tracks immediately after getting permissions
+                    showMessage("Camera and microphone permissions granted!", 'success');
+                    console.log("DEBUG PROFUNDO: Media permissions successfully granted.");
+                } catch (error) {
+                    console.error(`DEBUG PROFUNDO: Error requesting media permissions: Name: ${error.name}, Message: ${error.message}`, error);
+                    showMessage(`Error requesting media permissions: ${error.message}. Please check your browser settings.`, 'error');
+                }
+            }, [showMessage]);
+
 
             const startStreaming = React.useCallback(async () => {
                 console.log("DEBUG PROFUNDO: startStreaming - Initiated.");
@@ -1063,7 +1077,20 @@
                     if (localVideoRef.current) {
                         localVideoRef.current.srcObject = stream;
                     }
-                    console.log("DEBUG PROFUNDO: startStreaming - Media devices obtained.");
+                    console.log("DEBUG PROFUNDO: startStreaming - Media devices obtained. Stream object:", stream);
+                    console.log("DEBUG PROFUNDO: startStreaming - Stream has video tracks:", stream.getVideoTracks().length > 0);
+                    console.log("DEBUG PROFUNDO: startStreaming - Stream has audio tracks:", stream.getAudioTracks().length > 0);
+
+                    if (stream.getVideoTracks().length === 0 && stream.getAudioTracks().length === 0) {
+                        showMessage("No video or audio tracks found in the stream. Check camera/microphone connections and permissions.", 'error');
+                        console.error("DEBUG PROFUNDO: getUserMedia succeeded but no tracks found.");
+                        stream.getTracks().forEach(track => track.stop());
+                        setLocalStream(null);
+                        setIsLoading(false);
+                        setIsStartingStream(false);
+                        return;
+                    }
+
 
                     pc = createPeerConnection(currentAuthUserId); // Assign to declared pc
 
@@ -1187,7 +1214,7 @@
                     // Consider storing unsubscribe functions in a ref or state if you need to clean them up explicitly
                     // For simplicity, they will be cleaned up when component unmounts or activeChannel changes
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error starting stream (general catch block):", error);
+                    console.error(`DEBUG PROFUNDO: Error starting stream (general catch block): Name: ${error.name}, Message: ${error.message}`, error);
                     showMessage(`Error starting stream: ${error.message}`, 'error');
                     // Ensure all resources are cleaned up even on general errors
                     if (stream) {
@@ -1284,7 +1311,7 @@
                     showMessage("Joining stream...", 'success');
                     console.log("DEBUG PROFUNDO: Started receiving stream.");
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error receiving stream (general catch block):", error);
+                    console.error(`DEBUG PROFUNDO: Error receiving stream (general catch block): Name: ${error.name}, Message: ${error.message}`, error);
                     showMessage(`Error joining stream: ${error.message}`, 'error');
                     if (peerConnection) {
                         peerConnection.close();
@@ -1585,6 +1612,14 @@
                             disabled={!userNameConfirmed}
                         >
                             Explore Channels
+                        </button>
+
+                        {/* NEW: Button to request media permissions */}
+                        <button
+                            onClick={requestMediaPermissions}
+                            className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mt-4"
+                        >
+                            Check & Request Media Permissions
                         </button>
                     </div>
                 </div>
