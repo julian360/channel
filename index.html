@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v38 (WebRTC Streaming - Enhanced Firestore Write Verification and onSnapshot Trace)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v39 (WebRTC Streaming - Improved onSnapshot Streamer Logic)");
 
 
         // Helper function to generate a random username for new users
@@ -584,19 +584,15 @@
                             }
                             // Logic for streamer to ensure their local state matches Firestore (if they stopped it elsewhere)
                             // This also handles cases where the streamer might have left the channel or their stream died
-                            else if (!isChannelStreamingInFirestore && currentStreamerIdInFirestore === userId && isStreaming) {
-                                console.warn("DEBUG PROFUNDO: Streamer local state is active, but Firestore shows inactive. Forcing local stream stop.");
-                                console.trace("DEBUG PROFUNDO: Call stack for forced stopStreaming (streamer side)."); // NEW TRACE
-                                showMessage("Tu stream ha terminado o ha sido desconectado (detectado por Firestore).", 'info');
-                                setTimeout(() => stopStreaming(), 500);
-                            }
-                            // Edge case: If we are a streamer and Firestore *still* shows false, but our local state is true,
-                            // it means the Firestore update failed silently or was overwritten. Force stop local stream.
-                            else if (isStreaming && currentStreamerIdInFirestore === userId && !isChannelStreamingInFirestore) {
-                                console.warn("DEBUG PROFUNDO: Streamer local state is active, but Firestore shows inactive. Forcing local stream stop.");
-                                console.trace("DEBUG PROFUNDO: Call stack for forced stopStreaming (streamer side - edge case)."); // NEW TRACE
-                                showMessage("Tu stream no se pudo iniciar correctamente en Firestore. Deteniendo el stream.", 'error');
-                                setTimeout(() => stopStreaming(), 500);
+                            else if (isStreaming && isStreamer && (!isChannelStreamingInFirestore || currentStreamerIdInFirestore !== userId)) {
+                                if (!isStartingStream) { // Only stop if we are not actively trying to start it
+                                    console.warn("DEBUG PROFUNDO: Streamer local state is active, but Firestore shows inactive or different streamer. Forcing local stream stop.");
+                                    console.trace("DEBUG PROFUNDO: Call stack for forced stopStreaming (streamer side).");
+                                    showMessage("Tu stream ha terminado o ha sido desconectado (detectado por Firestore).", 'info');
+                                    setTimeout(() => stopStreaming(), 500);
+                                } else {
+                                    console.log("DEBUG PROFUNDO: onSnapshot - Streamer is starting stream. Ignoring temporary Firestore state mismatch.");
+                                }
                             }
                         }
                     }, (error) => {
@@ -1306,7 +1302,7 @@
 
 
                     // Listen for ICE candidates from streamer
-                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/iceCandidates`);
+                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`);
                     const unsubscribeCandidates = window.onSnapshot(iceCandidatesColRef, (snapshot) => {
                         snapshot.docChanges().forEach(async (change) => {
                             if (change.type === 'added' && change.doc.data().senderId === streamerId) {
