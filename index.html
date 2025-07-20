@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v39 (WebRTC Streaming - Improved onSnapshot Streamer Logic)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v41 (WebRTC Streaming - Finalizing Streamer onSnapshot Logic)");
 
 
         // Helper function to generate a random username for new users
@@ -282,6 +282,11 @@
             React.useEffect(() => {
                 console.log(`DEBUG PROFUNDO: currentPage changed to: ${currentPage}`);
             }, [currentPage]);
+
+            // Debugging useEffect to monitor isStartingStream
+            React.useEffect(() => {
+                console.log(`DEBUG PROFUNDO: isStartingStream changed to: ${isStartingStream}`);
+            }, [isStartingStream]);
 
 
             // 1. Initial Firebase setup and setting db/auth states
@@ -1239,13 +1244,16 @@
                     setIsStreaming(false);
                     setIsStreamer(false);
                     setIsLoading(false); // Ensure isLoading is false on error
-                    setIsStartingStream(false); // Reset flag on error
                 } finally {
                     console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. Setting isLoading to false.");
                     setIsLoading(false);
-                    setIsStartingStream(false); // Always reset flag in finally
+                    // Deactivate isStartingStream after a short delay to allow Firestore to propagate
+                    setTimeout(() => {
+                        setIsStartingStream(false);
+                        console.log("DEBUG PROFUNDO: isStartingStream set to false after delay.");
+                    }, 500); // 500ms delay
                 }
-            }, [isAuthReady, db, activeChannel, userName, showMessage, setIsLoading, createPeerConnection, localStream, isStreaming, auth]);
+            }, [isAuthReady, db, activeChannel, userName, showMessage, setIsLoading, createPeerConnection, localStream, isStreaming, auth, setIsStartingStream, setIsStreaming, setIsStreamer]);
 
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
@@ -1302,7 +1310,7 @@
 
 
                     // Listen for ICE candidates from streamer
-                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`);
+                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/iceCandidates`);
                     const unsubscribeCandidates = window.onSnapshot(iceCandidatesColRef, (snapshot) => {
                         snapshot.docChanges().forEach(async (change) => {
                             if (change.type === 'added' && change.doc.data().senderId === streamerId) {
