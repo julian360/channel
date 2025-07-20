@@ -1071,8 +1071,9 @@
       // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
       // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
         // Version: 2025-07-20-DailyFix-v59
+       // Version: 2025-07-20-DailyFix-v60
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v59");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v60");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1191,7 +1192,21 @@
                 // NEW: Explicitly create and set offer after adding tracks with a timeout
                 console.log("DEBUG PROFUNDO: BEFORE createOffer. Current signalingState:", pcInstance.signalingState);
                 console.log("DEBUG PROFUNDO: Transceivers:", pcInstance.getTransceivers());
-                console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, tracks: ${stream.getTracks().length}`); // NEW LOG
+                console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, tracks: ${stream.getTracks().length}`);
+
+                // NEW: Check for stream readiness before creating offer
+                if (!stream.active || stream.readyState !== 'live' || stream.getTracks().length === 0) {
+                    const errorMessage = `Media stream is not fully ready. Active: ${stream.active}, ReadyState: ${stream.readyState}, Tracks: ${stream.getTracks().length}.`;
+                    console.error("DEBUG PROFUNDO: " + errorMessage);
+                    showMessage(errorMessage + " Please check your camera/microphone.", 'error');
+                    if (stream) { stream.getTracks().forEach(track => track.stop()); }
+                    if (pcInstance) { pcInstance.close(); }
+                    setLocalStream(null); setPeerConnection(null); setIsStreaming(false); setIsStreamer(false); setIsLoading(false); setIsStartingStream(false);
+                    return;
+                }
+
+                // NEW: Small delay to ensure stream is fully ready
+                await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
 
                 const createOfferPromise = pcInstance.createOffer();
                 const createOfferTimeout = new Promise((resolve, reject) =>
