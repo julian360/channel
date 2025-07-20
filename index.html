@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v46 (WebRTC Streaming - Offer Creation Debug)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v47 (WebRTC Streaming - MediaStream Active Fix)");
 
 
         // Helper function to generate a random username for new users
@@ -1094,33 +1094,29 @@
                 try {
                     console.log("DEBUG PROFUNDO: startStreaming - Requesting media devices.");
                     stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                    setLocalStream(stream);
+
+                    // *** NEW: More robust check for stream activity and tracks ***
+                    if (!stream || !stream.active || stream.getTracks().length === 0) {
+                        showMessage("Media stream is not active or has no tracks. Check camera/microphone connections and permissions.", 'error');
+                        console.error("DEBUG PROFUNDO: getUserMedia succeeded but stream is not active or has no tracks. Stream object:", stream);
+                        if (stream) { // Ensure tracks are stopped if stream exists but is problematic
+                            stream.getTracks().forEach(track => track.stop());
+                        }
+                        setLocalStream(null);
+                        setIsLoading(false);
+                        setIsStartingStream(false);
+                        return;
+                    }
+                    console.log(`DEBUG PROFUNDO: startStreaming - MediaStream active state (after robust check): ${stream.active}`); // NEW LOG
+
+                    setLocalStream(stream); // Set local stream state
                     if (localVideoRef.current) {
-                        localVideoRef.current.srcObject = stream;
-                    }
-                    console.log("DEBUG PROFUNDO: startStreaming - Media devices obtained. Stream object:", stream);
-                    console.log("DEBUG PROFUNDO: startStreaming - Stream has video tracks:", stream.getVideoTracks().length > 0);
-                    console.log("DEBUG PROFUNDO: startStreaming - Stream has audio tracks:", stream.getAudioTracks().length > 0);
-                    console.log(`DEBUG PROFUNDO: startStreaming - MediaStream active state: ${stream.active}`); // NEW LOG
-
-                    if (!stream.active) { // NEW CHECK
-                        showMessage("Media stream is not active. Check camera/microphone connections and permissions.", 'error');
-                        console.error("DEBUG PROFUNDO: getUserMedia succeeded but stream is not active.");
-                        stream.getTracks().forEach(track => track.stop()); // Ensure tracks are stopped
-                        setLocalStream(null);
-                        setIsLoading(false);
-                        setIsStartingStream(false);
-                        return;
-                    }
-
-                    if (stream.getVideoTracks().length === 0 && stream.getAudioTracks().length === 0) {
-                        showMessage("No video or audio tracks found in the stream. Check camera/microphone connections and permissions.", 'error');
-                        console.error("DEBUG PROFUNDO: getUserMedia succeeded but no tracks found.");
-                        stream.getTracks().forEach(track => track.stop());
-                        setLocalStream(null);
-                        setIsLoading(false);
-                        setIsStartingStream(false);
-                        return;
+                        localVideoRef.current.srcObject = stream; // Assign stream to video element
+                        // Optional: Wait for video to load metadata, though not always necessary for simple streams
+                        // await new Promise(resolve => localVideoRef.current.onloadedmetadata = resolve);
+                        console.log("DEBUG PROFUNDO: startStreaming - Local video element srcObject set.");
+                    } else {
+                         console.warn("DEBUG PROFUNDO: startStreaming - localVideoRef.current is null. Cannot attach stream to video element.");
                     }
 
 
@@ -1257,7 +1253,6 @@
                         console.error("DEBUG PROFUNDO: Error listening for ICE candidates:", error);
                     });
 
-                    // setPeerConnection(pcInstance); // This is now set earlier
                     // Consider storing unsubscribe functions in a ref or state if you need to clean them up explicitly
                     // For simplicity, they will be cleaned up when component unmounts or activeChannel changes
                 } catch (error) {
