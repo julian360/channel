@@ -15,34 +15,31 @@
     <meta name="theme-color" content="#2563eb">
 
     <script type="module">
-        // Importa módulos de Firebase
+        // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Importa addDoc, getDocs, deleteDoc y serverTimestamp para añadir mensajes y marcas de tiempo
-        import { getFirestore, doc, getDoc, setDoc, collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Import addDoc, getDocs, deleteDoc and serverTimestamp to add messages and timestamps
+        import { getFirestore, doc, getDoc, setDoc, collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, getDocs, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 
-        // Variables globales para la configuración de Firebase.
-        // IMPORTANTE: En un entorno Canvas real, estas se proporcionan automáticamente.
-        // Para pruebas locales, tus detalles de configuración de Firebase reales ahora están incluidos a continuación.
-        window.__app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Reemplaza 'default-app-id' si Canvas proporciona uno
+        // Global variables for Firebase configuration.
+        // IMPORTANT: In a real Canvas environment, these are provided automatically.
+        // For local testing, your actual Firebase configuration details are now included below.
+        window.__app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Replace 'default-app-id' if Canvas provides one
         window.__firebase_config = typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
-            apiKey: "AIzaSyBELawPeUmP2tRaL19X7Tr6MRcI9oMgdSM", // Tu clave API de Firebase
-            authDomain: "channel-jl.firebaseapp.com", // Tu dominio de autenticación de Firebase
-            projectId: "channel-jl", // Tu ID de proyecto de Firebase
-            storageBucket: "channel-jl.firebasestorage.app", // Tu Firebase Storage Bucket
-            messagingSenderId: "350780625607", // Tu ID de aplicación de Firebase
-            appId: "1:350780625607:web:a0275d6d6ee89b0813a4e2" // Tu ID de aplicación de Firebase
+            apiKey: "AIzaSyBELawPeUmP2tRaL19X7Tr6MRcI9oMgdSM", // Your Firebase API key
+            authDomain: "channel-jl.firebaseapp.com", // Your Firebase authentication domain
+            projectId: "channel-jl", // Your Firebase project ID
+            storageBucket: "channel-jl.firebasestorage.app", // Your Firebase Storage Bucket
+            messagingSenderId: "350780625607", // Your Firebase app ID
+            appId: "1:350780625607:web:a0275d6d6ee89b0813a4e2" // Your Firebase app ID
         });
-        window.__initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : ''; // Deja vacío para inicio de sesión anónimo
-
-        // Inicializa los servicios de Firebase globalmente
         window.firebaseApp = initializeApp(JSON.parse(window.__firebase_config));
-        console.log("DEBUG PROFUNDO: window.firebaseApp:", window.firebaseApp); // Registra el objeto completo de la app
+        console.log("DEBUG PROFUNDO: window.firebaseApp:", window.firebaseApp); // Log the full app object
         window.db = getFirestore(window.firebaseApp);
         window.auth = getAuth(window.firebaseApp);
 
-        // Expone las funciones de Firebase Firestore globalmente para que el componente React las use
+        // Expose Firebase Firestore functions globally for the React component to use
         window.onAuthStateChanged = onAuthStateChanged;
         window.doc = doc;
         window.getDoc = getDoc;
@@ -50,17 +47,19 @@
         window.collection = collection;
         window.query = query;
         window.onSnapshot = onSnapshot;
-        // Expone nuevas funciones de Firestore
+        // Expose new Firestore functions
         window.addDoc = addDoc;
         window.serverTimestamp = serverTimestamp;
         window.orderBy = orderBy;
-        window.getDocs = getDocs; // Expone getDocs para la eliminación de subcolecciones
-        window.deleteDoc = deleteDoc; // Expone deleteDoc para la eliminación de canales
-        // NUEVO: Exponer signInAnonymously globalmente
+        window.getDocs = getDocs; // Expose getDocs for subcollection deletion
+        window.deleteDoc = deleteDoc; // Expose deleteDoc for channel deletion
+        window.deleteField = deleteField; // Expose deleteField for removing fields
+
+        // NEW: Expose signInAnonymously globally
         window.signInAnonymously = signInAnonymously;
 
 
-        // PWA: Registra el Service Worker con la ruta corregida para tu repositorio 'channel'
+        // PWA: Register the Service Worker with the corrected path for your 'channel' repository
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/channel/service-worker.js')
@@ -74,12 +73,12 @@
         }
     </script>
     <style>
-        /* Estilo básico para el cuerpo para aplicar la fuente Inter */
+        /* Basic style for the body to apply the Inter font */
         body {
             font-family: 'Inter', sans-serif;
         }
 
-        /* Estilos del spinner */
+        /* Spinner styles */
         .spinner {
             border: 4px solid rgba(255, 255, 255, 0.3);
             border-top: 4px solid #fff;
@@ -94,10 +93,10 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Estilo añadido para el botón de retroceso para asegurar que sea clickeable */
+        /* Style added for the back button to ensure it is clickable */
         .back-button-z-index {
-            z-index: 60 !important; /* Más alto que el z-index del spinner (50) */
-            position: relative; /* Asegura que se aplique el z-index */
+            z-index: 60 !important; /* Higher than the spinner z-index (50) */
+            position: relative; /* Ensures z-index is applied */
         }
     </style>
 </head>
@@ -105,11 +104,11 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // Mensaje de depuración para verificar la versión del código
-        console.log("DEBUG PROFUNDO: Versión del código: 2025-07-20-DailyFix-v16 (Sin Daily.co)");
+        // Debug message to verify code version
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v32 (WebRTC Streaming - Detailed PC state logging)");
 
 
-        // Función de ayuda para generar un nombre de usuario aleatorio para nuevos usuarios
+        // Helper function to generate a random username for new users
         const generateRandomUserName = () => {
             const adjectives = ['Veloz', 'Sabio', 'Curioso', 'Audaz', 'Brillante', 'Silencioso', 'Fuerte', 'Gentil', 'Salvaje', 'Lujurioso', 'Hambriento', 'Envidioso', 'Furioso', 'Chad', 'Grande', 'Venoso', 'Oscuro', 'Chiquito'];
             const nouns = ['Lobo', 'Zorro', 'Águila', 'Tigre', 'Oso', 'Panda', 'Delfín', 'León', 'Perro', 'Gato', 'Puma', 'Pichón', 'Gorrión', 'Caballo', 'Gorila', 'Pinguino', 'Hombre', 'Mono', 'Ratón'];
@@ -119,7 +118,7 @@
             return `${randomAdjective}${randomNoun}${randomNumber}`;
         };
 
-        // Componente de mensaje para mostrar retroalimentación al usuario (reemplaza alert())
+        // Message component to display user feedback (replaces alert())
         const MessageDisplay = ({ message, type, onClose }) => {
             if (!message) return null;
 
@@ -136,38 +135,38 @@
             );
         };
 
-        // Componente de spinner de carga
+        // Loading spinner component
         const LoadingSpinner = () => (
-            // Este div sigue siendo el overlay de pantalla completa (sin fondo propio)
+            // This div is still the full-screen overlay (without its own background)
             <div className="fixed inset-0 flex items-center justify-center z-50">
-                {/* Este nuevo div es el contenedor para el spinner y el texto, y tendrá el fondo semitransparente */}
+                {/* This new div is the container for the spinner and text, and will have the semi-transparent background */}
                 <div style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', padding: '20px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div className="spinner"></div>
                     <p className="ml-4 text-white text-lg">Cargando...</p>
                 </div>
             </div>
         );
-        // Componente principal de la aplicación
+        // Main application component
         const App = () => {
-            // Estado para gestionar la vista actual: 'home', 'channel' o 'explore'
+            // State to manage the current view: 'home', 'channel' or 'explore'
             const [currentPage, setCurrentPage] = React.useState('home');
-            // Estado para almacenar el nombre del canal introducido por el usuario
+            // State to store the channel name entered by the user
             const [channelName, setChannelName] = React.useState('');
-            // Estado para almacenar el nombre del canal activo al ver un canal
+            // State to store the active channel name when viewing a channel
             const [activeChannel, setActiveChannel] = React.useState('');
-            // Estado para almacenar una lista de canales disponibles para la página de exploración
+            // State to store a list of available channels for the explore page
             const [availableChannels, setAvailableChannels] = React.useState([]);
-            // Estado para almacenar el nombre de visualización elegido por el usuario
+            // State to store the display name chosen by the user
             const [userName, setUserName] = React.useState('');
-            // Estado para rastrear si el nombre de usuario ha sido confirmado
+            // State to track if the username has been confirmed
             const [userNameConfirmed, setUserNameConfirmed] = React.useState(false);
-            // Estado para mostrar mensajes al usuario
+            // State to display messages to the user
             const [message, setMessage] = React.useState(null);
             const [messageType, setMessageType] = React.useState('');
 
-            // NUEVO: Estado para el mensaje actual que se está escribiendo
+            // NEW: State for the current message being typed
             const [currentMessage, setCurrentMessage] = React.useState('');
-            // NUEVO: Estado para los mensajes de chat
+            // NEW: State for chat messages
             const [chatMessages, setChatMessages] = React.useState([]);
 
             // Firebase related states
@@ -175,68 +174,79 @@
             const [auth, setAuth] = React.useState(null);
             const [userId, setUserId] = React.useState(null);
             const [isAuthReady, setIsAuthReady] = React.useState(false);
-            // NUEVO: Estado para el estado de carga general
+            // NEW: State for general loading status
             const [isLoading, setIsLoading] = React.useState(true);
 
-            // Estado para la visibilidad del menú de opciones (para la página de canal)
+            // State for options menu visibility (for the channel page)
             const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
-            // NUEVO: Estado para la visibilidad del panel de actividad (lista de usuarios)
+            // NEW: State for activity panel visibility (user list)
             const [showActivityPanel, setShowActivityPanel] = React.useState(false);
-            // NUEVO: Estado para almacenar los miembros del canal (histórico)
+            // NEW: State to store channel members (historical)
             const [channelMembers, setChannelMembers] = React.useState([]);
-            // ELIMINADO: onlineParticipants ya no es necesario sin Daily.co
+
+            // NEW: WebRTC states
+            const [localStream, setLocalStream] = React.useState(null);
+            const [remoteStream, setRemoteStream] = React.useState(null);
+            const [peerConnection, setPeerConnection] = React.useState(null);
+            const [isStreaming, setIsStreaming] = React.useState(false);
+            const [isReceivingStream, setIsReceivingStream] = React.useState(false);
+            const [isStreamer, setIsStreamer] = React.useState(false); // To identify the streamer
+            // NEW: Flag to indicate if a stream is in the process of starting
+            const [isStartingStream, setIsStartingStream] = React.useState(false);
 
 
-            // ELIMINADO: Estados de Daily.co (dailyCallFrame, isStreaming, dailyError, isDailySdkLoaded)
-
-            // PWA: Estado para el evento beforeinstallprompt
+            // PWA: State for the beforeinstallprompt event
             const [deferredPrompt, setDeferredPrompt] = React.useState(null);
-            // PWA: Estado para saber si la PWA ya está instalada
+            // PWA: State to know if the PWA is already installed
             const [isPwaInstalled, setIsPwaInstalled] = React.useState(false);
 
-            // NUEVO: Estados para el modo Tigre
-            const [showTigreCodeInput, setShowTigreCodeInput] = React.useState(false); // Controla la visibilidad del input de código
-            const [tigreCode, setTigreCode] = React.useState(''); // Almacena el código ingresado
-            const [isTigre, setIsTigre] = React.useState(false); // Indica si el modo Tigre está activo
+            // NEW: States for Tigre mode
+            const [showTigreCodeInput, setShowTigreCodeInput] = React.useState(false); // Controls code input visibility
+            const [tigreCode, setTigreCode] = React.useState(''); // Stores the entered code
+            const [isTigre, setIsTigre] = React.useState(false); // Indicates if Tigre mode is active
 
 
-            // Ref para el campo de entrada del nombre del canal
+            // Ref for the channel name input field
             const channelInputRef = React.useRef(null);
-            // NUEVO: Ref para el div de mensajes de chat para habilitar el desplazamiento automático
+            // NEW: Ref for the chat messages div to enable auto-scrolling
             const chatMessagesEndRef = React.useRef(null);
-            // Ref para el botón del menú de opciones para manejar clics externos (para la página de canal)
+            // Ref for the options menu button to handle external clicks (for the channel page)
             const optionsMenuRef = React.useRef(null);
-            // NUEVO: Ref para el menú de opciones de la página de exploración
+            // NEW: Ref for the explore page menu
             const exploreMenuRef = React.useRef(null);
-            // NUEVO: Ref para la entrada de archivo oculta
+            // NEW: Ref for the hidden file input
             const fileInputRef = React.useRef(null);
+            // NEW: Refs for local and remote video elements
+            const localVideoRef = React.useRef(null);
+            const remoteVideoRef = React.useRef(null);
 
-            // NUEVO: Estado para la opción de ordenamiento en la página de exploración
-            // 'activity' (mayor actividad/más reciente), 'recent' (más recientes por creación)
+
+            // NEW: State for the sorting option on the explore page
+            // 'activity' (most active/most recent), 'recent' (most recent by creation)
             const [sortOption, setSortOption] = React.useState('activity');
-            // NUEVO: Estado para controlar la visibilidad del menú de exploración
+            // NEW: State to control the visibility of the explore menu
             const [showExploreMenu, setShowExploreMenu] = React.useState(false);
-            // NUEVO: Estado para la consulta de búsqueda en la página de exploración
+            // NEW: State for the search query on the explore page
             const [searchQuery, setSearchQuery] = React.useState('');
-            // NUEVO: Estado para controlar la visibilidad del campo de búsqueda
+            // NEW: State to control the visibility of the search field
             const [showSearchInput, setShowSearchInput] = React.useState(false);
-            // NUEVO: Ref para el input de búsqueda
+            // NEW: Ref for the search input
             const searchInputRef = React.useRef(null);
 
 
-            // Función para mostrar un mensaje
+            // Function to display a message
             const showMessage = React.useCallback((msg, type = 'success') => {
                 setMessage(msg);
                 setMessageType(type);
-                setTimeout(() => setMessage(null), 3000); // Borra el mensaje después de 3 segundos
+                setTimeout(() => setMessage(null), 3000); // Clear the message after 3 seconds
             }, []);
 
-            // NUEVO: Función para desplazarse al final de los mensajes de chat
+            // NEW: Function to scroll to the end of chat messages
             const scrollToBottom = React.useCallback(() => {
                 chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }, []);
 
-            // PWA: Maneja el evento beforeinstallprompt
+            // PWA: Handles the beforeinstallprompt event
             React.useEffect(() => {
                 const handler = (e) => {
                     e.preventDefault();
@@ -252,7 +262,7 @@
                 return () => window.removeEventListener('beforeinstallprompt', handler);
             }, []);
 
-            // PWA: Maneja el evento appinstalled (cuando el usuario instala la PWA)
+            // PWA: Handles the appinstalled event (when the user installs the PWA)
             React.useEffect(() => {
                 const handleAppInstalled = () => {
                     setIsPwaInstalled(true);
@@ -264,45 +274,66 @@
                 return () => window.removeEventListener('appinstalled', handleAppInstalled);
             }, [showMessage]);
 
-            // 1. Initial Firebase setup and user authentication, and profile loading
+            // Debugging useEffect to monitor isLoading and currentPage
             React.useEffect(() => {
+                console.log(`DEBUG PROFUNDO: isLoading changed to: ${isLoading}`);
+            }, [isLoading]);
+
+            React.useEffect(() => {
+                console.log(`DEBUG PROFUNDO: currentPage changed to: ${currentPage}`);
+            }, [currentPage]);
+
+
+            // 1. Initial Firebase setup and setting db/auth states
+            React.useEffect(() => {
+                // Set db and auth from window after global initialization
                 setDb(window.db);
                 setAuth(window.auth);
+                console.log("DEBUG PROFUNDO: Firebase db and auth set in React state.");
+            }, []); // Empty dependency array means this runs once on mount
 
-                const unsubscribeAuth = window.onAuthStateChanged(window.auth, async (user) => {
+            // 2. Firebase Auth listener and user profile loading (depends on 'auth' being set)
+            React.useEffect(() => {
+                if (!auth || !db) {
+                    console.log("DEBUG PROFUNDO: Auth or DB not yet available for listener setup. Skipping.");
+                    return;
+                }
+
+                console.log("DEBUG PROFUNDO: Setting up onAuthStateChanged listener.");
+                const unsubscribeAuth = window.onAuthStateChanged(auth, async (user) => {
                     let currentUserId = null;
                     if (user) {
                         currentUserId = user.uid;
                         setUserId(currentUserId);
-                        console.log("DEBUG PROFUNDO: onAuthStateChanged - userId establecido:", currentUserId);
+                        console.log("DEBUG PROFUNDO: onAuthStateChanged - userId established:", currentUserId);
                     } else {
-                        console.log("DEBUG PROFUNDO: onAuthStateChanged - Usuario no autenticado, intentando signInAnonymously si es necesario.");
+                        console.log("DEBUG PROFUNDO: onAuthStateChanged - User not authenticated, attempting signInAnonymously if necessary.");
                         try {
-                            const userCredential = await window.signInAnonymously(window.auth);
+                            const userCredential = await window.signInAnonymously(auth); // Use auth from state
                             currentUserId = userCredential.user.uid;
                             setUserId(currentUserId);
-                            console.log("DEBUG PROFUNDO: onAuthStateChanged - userId ANÓNIMO establecido después de signIn:", currentUserId);
+                            console.log("DEBUG PROFUNDO: onAuthStateChanged - ANONYMOUS userId established after signIn:", currentUserId);
                         } catch (anonError) {
-                            console.error("DEBUG PROFUNDO: Error durante el inicio de sesión anónimo en onAuthStateChanged:", anonError);
+                            console.error("DEBUG PROFUNDO: Error during anonymous login in onAuthStateChanged:", anonError);
                             // Fallback to a client-side generated ID if anonymous sign-in fails
                             currentUserId = (Math.random().toString(36).substring(2) + Date.now().toString(36));
                             setUserId(currentUserId);
-                            showMessage("No se pudo autenticar al usuario. Usando ID de respaldo. Algunas funciones podrían estar limitadas.", 'error');
-                            console.log("DEBUG PROFUNDO: onAuthStateChanged - userId de respaldo establecido debido a error de inicio de sesión:", currentUserId);
+                            showMessage("Could not authenticate user. Using fallback ID. Some functions might be limited.", 'error');
+                            console.log("DEBUG PROFUNDO: onAuthStateChanged - Fallback userId established due to login error:", currentUserId);
                         }
                     }
 
-                    // *** MODIFICACIÓN CLAVE AQUÍ: Asegurarse de que db y userId estén disponibles antes de interactuar con Firestore ***
-                    if (currentUserId && window.db) {
-                        const userProfileRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${currentUserId}/profile`, 'userProfile');
+                    // *** KEY MODIFICATION HERE: Ensure db and userId are available before interacting with Firestore ***
+                    if (currentUserId && db) { // Use db from state
+                        const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${currentUserId}/profile`, 'userProfile');
                         try {
-                            console.log("DEBUG PROFUNDO: Intentando leer/crear perfil de usuario en la ruta:", userProfileRef.path);
+                            console.log("DEBUG PROFUNDO: Attempting to read/create user profile at path:", userProfileRef.path);
                             const userProfileSnap = await window.getDoc(userProfileRef);
 
                             let profileData;
                             if (userProfileSnap.exists()) {
                                 profileData = userProfileSnap.data();
-                                console.log(`DEBUG PROFUNDO: Perfil de usuario cargado para ${currentUserId}.`);
+                                console.log(`DEBUG PROFUNDO: User profile loaded for ${currentUserId}.`);
                             } else {
                                 // If profile doesn't exist, create it with a new random one
                                 const userNameToUse = generateRandomUserName();
@@ -312,7 +343,7 @@
                                 };
                                 await window.setDoc(userProfileRef, profileData);
                                 // No need to set localStorage here, userName state will be set below
-                                console.log(`DEBUG PROFUNDO: Perfil de usuario creado para ${currentUserId}.`);
+                                console.log(`DEBUG PROFUNDO: User profile created for ${currentUserId}.`);
                             }
 
                             // Update React states based on the loaded/created profile data
@@ -324,34 +355,54 @@
                             // It will be triggered by handleConfirmUserName if userName is 'Julian360'.
 
                         } catch (profileError) {
-                            console.error("DEBUG PROFUNDO: Error al cargar/crear el perfil de usuario desde Firestore (dentro de onAuthStateChanged):", profileError);
+                            console.error("DEBUG PROFUNDO: Error loading/creating user profile from Firestore (inside onAuthStateChanged):", profileError);
                             setIsTigre(false);
                             setShowTigreCodeInput(false); // Ensure this is false on error
-                            showMessage("Error al cargar tu perfil de usuario. Consulta la consola.", 'error');
+                            showMessage("Error loading your user profile. Check the console.", 'error');
                         }
                     } else {
                         // Fallback if currentUserId or db is not available, ensure Tigre mode is off
                         setIsTigre(false);
                         setShowTigreCodeInput(false);
-                        console.log("DEBUG PROFUNDO: No hay userId o db disponible para cargar el perfil. isTigre establecido a false.");
+                        console.log("DEBUG PROFUNDO: No userId or db available to load profile. isTigre set to false.");
                     }
                     setIsAuthReady(true);
                     setIsLoading(false);
-                    console.log("DEBUG PROFUNDO: isAuthReady establecido a true.");
+                    console.log("DEBUG PROFUNDO: isAuthReady set to true.");
                 });
 
                 return () => unsubscribeAuth();
-            }, [showMessage]); // Add showMessage to dependency array
+            }, [auth, db, showMessage]); // Dependencies: auth and db states
 
 
             React.useEffect(() => {
                 const handlePopState = (event) => {
                     if (event.state && event.state.page) {
                         setCurrentPage(event.state.page);
-                        // ELIMINADO: dailyCallFrame.leave() y relacionados
+                        // Stop streaming if navigating away from channel page
+                        if (event.state.page !== 'channel' && peerConnection) {
+                            peerConnection.close();
+                            setPeerConnection(null);
+                            if (localStream) localStream.getTracks().forEach(track => track.stop());
+                            setLocalStream(null);
+                            setRemoteStream(null);
+                            setIsStreaming(false);
+                            setIsReceivingStream(false);
+                            setIsStreamer(false);
+                        }
                     } else {
                         setCurrentPage('home');
-                        // ELIMINADO: dailyCallFrame.leave() y relacionados
+                        // Stop streaming if navigating away from channel page
+                        if (peerConnection) {
+                            peerConnection.close();
+                            setPeerConnection(null);
+                            if (localStream) localStream.getTracks().forEach(track => track.stop());
+                            setLocalStream(null);
+                            setRemoteStream(null);
+                            setIsStreaming(false);
+                            setIsReceivingStream(false);
+                            setIsStreamer(false);
+                        }
                     }
                 };
 
@@ -360,7 +411,7 @@
                 return () => {
                     window.removeEventListener('popstate', handlePopState);
                 };
-            }, [currentPage]); // ELIMINADO: dailyCallFrame de dependencias
+            }, [currentPage, peerConnection, localStream]);
 
             React.useEffect(() => {
                 if (currentPage && (!window.history.state || window.history.state.page !== currentPage)) {
@@ -386,7 +437,7 @@
 
             const fetchChannels = React.useCallback(async () => {
                 if (!isAuthReady || !db) {
-                    console.log("DEBUG PROFUNDO: fetchChannels - Firebase no listo o db es null. Saliendo.");
+                    console.log("DEBUG PROFUNDO: fetchChannels - Firebase not ready or db is null. Exiting.");
                     return;
                 }
                 setIsLoading(true);
@@ -401,8 +452,8 @@
                         createdAt: doc.data().createdAt,
                         createdBy: doc.data().createdBy,
                         creatorUserName: doc.data().creatorUserName,
-                        // ELIMINADO: dailyCoRoomUrl
-                        lastActivity: doc.data().lastActivity
+                        lastActivity: doc.data().lastActivity,
+                        isStreaming: doc.data().isStreaming || false // NEW: Add isStreaming status
                     }));
 
                     let processedChannels = [...channelsData];
@@ -428,14 +479,15 @@
                     }
 
                     setAvailableChannels(processedChannels);
-                    console.log("DEBUG PROFUNDO: Canales obtenidos y procesados:", processedChannels);
+                    console.log("DEBUG PROFUNDO: Channels fetched and processed:", processedChannels);
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error al obtener canales:", error);
+                    console.error("DEBUG PROFUNDO: Error fetching channels:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                        showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
                     } else {
-                        showMessage("Error al cargar canales. Consulta la consola.", 'error');
+                        showMessage("Error loading channels. Check the console.", 'error');
                     }
+                    setIsLoading(false); // Ensure isLoading is false on error
                 } finally {
                     setIsLoading(false);
                 }
@@ -477,13 +529,13 @@
                         }));
                         setChatMessages(messagesData);
                         scrollToBottom();
-                        console.log("DEBUG PROFUNDO: Mensajes de chat actualizados:", messagesData);
+                        console.log("DEBUG PROFUNDO: Chat messages updated:", messagesData);
                     }, (error) => {
-                        console.error("DEBUG PROFUNDO: Error al obtener mensajes de chat:", error);
+                        console.error("DEBUG PROFUNDO: Error fetching chat messages:", error);
                         if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                            showMessage("Error de conexión o permisos al cargar mensajes. Verifica las reglas de Firestore.", 'error');
+                            showMessage("Connection error or permissions when loading messages. Check Firestore rules.", 'error');
                         } else {
-                            showMessage("Error al cargar mensajes del chat. Consulta la consola.", 'error');
+                            showMessage("Error loading chat messages. Check the console.", 'error');
                         }
                     });
 
@@ -494,118 +546,201 @@
                             ...doc.data()
                         }));
                         setChannelMembers(membersData);
-                        console.log("DEBUG PROFUNDO: Miembros del canal actualizados:", membersData);
+                        console.log("DEBUG PROFUNDO: Channel members updated:", membersData);
                     }, (error) => {
-                        console.error("DEBUG PROFUNDO: Error al obtener miembros del canal:", error);
+                        console.error("DEBUG PROFUNDO: Error fetching channel members:", error);
+                    });
+
+                    // NEW: Listen for streaming status of the channel
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+                    const unsubscribeChannelStatus = window.onSnapshot(channelDocRef, async (docSnap) => {
+                        if (docSnap.exists()) {
+                            const channelData = docSnap.data();
+                            const currentStreamerId = channelData.streamerId;
+                            const isChannelStreaming = channelData.isStreaming || false;
+
+                            console.log("DEBUG PROFUNDO: onSnapshot - Channel data from Firestore:", channelData); // Log the full data
+                            console.log("DEBUG PROFUNDO: onSnapshot - Channel streaming status updated:", isChannelStreaming, "Streamer ID:", currentStreamerId, "Current User ID:", userId);
+                            console.log("DEBUG PROFUNDO: onSnapshot - Local isStreaming:", isStreaming, "Local isReceivingStream:", isReceivingStream, "Local isStreamer:", isStreamer);
+
+                            // Only proceed if we are NOT in the middle of starting a stream
+                            if (isStartingStream) {
+                                console.log("DEBUG PROFUNDO: onSnapshot - isStartingStream is true. Ignoring channel status update to prevent race condition.");
+                                return;
+                            }
+
+                            // Logic for viewers to join a stream
+                            if (isChannelStreaming && currentStreamerId && currentStreamerId !== userId && !isReceivingStream) {
+                                showMessage(`Stream activo en este canal por ${channelData.streamerUserName || 'alguien'}. Uniéndote como espectador...`, 'info');
+                                console.log("DEBUG PROFUNDO: Attempting to join stream as viewer.");
+                                await startReceivingStream(normalizedActiveChannel, currentStreamerId);
+                            }
+                            // Logic for viewers to stop receiving if stream ends
+                            else if (!isChannelStreaming && userId !== currentStreamerId && isReceivingStream) {
+                                showMessage("El stream ha terminado.", 'info');
+                                console.log("DEBUG PROFUNDO: Stream ended (viewer side).");
+                                // Add a small delay here to prevent race conditions
+                                setTimeout(() => stopStreaming(), 500); // Delay stopStreaming by 500ms
+                            }
+                            // Logic for streamer to ensure their local state matches Firestore (if they stopped it elsewhere)
+                            // This also handles cases where the streamer might have left the channel or their stream died
+                            else if (!isChannelStreaming && currentStreamerId === userId && isStreaming) {
+                                showMessage("Tu stream ha terminado o ha sido desconectado.", 'info');
+                                console.log("DEBUG PROFUNDO: Stream ended (streamer side, detected via Firestore).");
+                                // Add a small delay here to prevent race conditions
+                                setTimeout(() => stopStreaming(), 500); // Delay stopStreaming by 500ms
+                            }
+                        }
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error fetching channel streaming status:", error);
+                        // If there's an error fetching status, we might want to stop any active streams
+                        if (isStreaming || isReceivingStream) {
+                            showMessage("Error al obtener el estado del stream. Deteniendo el stream.", 'error');
+                            setTimeout(() => stopStreaming(), 500); // Delay stopStreaming by 500ms
+                        }
                     });
 
 
                     return () => {
                         unsubscribe();
                         unsubscribeMembers();
+                        unsubscribeChannelStatus(); // Clean up listener
+                        // Ensure WebRTC connections are closed when leaving the channel
+                        if (peerConnection) {
+                            peerConnection.close();
+                            setPeerConnection(null);
+                        }
+                        if (localStream) {
+                            localStream.getTracks().forEach(track => track.stop());
+                            setLocalStream(null);
+                        }
+                        setRemoteStream(null);
+                        setIsStreaming(false);
+                        setIsReceivingStream(false);
+                        setIsStreamer(false);
                     };
                 } else {
                     setChatMessages([]);
                     setChannelMembers([]);
-                    console.log("DEBUG PROFUNDO: Limpiando mensajes y miembros del canal.");
+                    // Ensure WebRTC connections are closed when leaving the channel
+                    if (peerConnection) {
+                        peerConnection.close();
+                        setPeerConnection(null);
+                    }
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => track.stop());
+                        setLocalStream(null);
+                    }
+                    setRemoteStream(null);
+                    setIsStreaming(false);
+                    setIsReceivingStream(false);
+                    setIsStreamer(false);
+                    console.log("DEBUG PROFUNDO: Cleaning up channel messages, members, and streaming state.");
                 }
-            }, [isAuthReady, db, activeChannel, currentPage, showMessage, scrollToBottom]);
+            }, [isAuthReady, db, activeChannel, currentPage, showMessage, scrollToBottom, userId, isReceivingStream, peerConnection, localStream, isStreaming, isStartingStream]); // Added isStartingStream to dependencies
 
             const handleConfirmUserName = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: handleConfirmUserName - Initiated.");
                 if (userName.trim() === '') {
-                    showMessage('Por favor, ingresa un nombre de usuario.', 'error');
+                    showMessage('Please enter a username.', 'error');
                     return;
                 }
                 if (userName.trim().length > 48) {
-                    showMessage('El nombre de usuario no puede exceder los 48 caracteres.', 'error');
+                    showMessage('Username cannot exceed 48 characters.', 'error');
                     return;
                 }
                 if (!isAuthReady || !db || !userId) {
-                    console.warn("DEBUG PROFUNDO: handleConfirmUserName - Firebase no está listo o db/userId es null.");
-                    showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
+                    console.warn("DEBUG PROFUNDO: handleConfirmUserName - Firebase is not ready or db/userId is null.");
+                    showMessage("Authentication is not ready. Please try again.", 'error');
                     return;
                 }
                 setIsLoading(true);
+                console.log("DEBUG PROFUNDO: handleConfirmUserName - isLoading set to true.");
                 try {
                     const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+                    console.log("DEBUG PROFUNDO: handleConfirmUserName - Attempting to save user profile.");
                     let profileUpdate = { userName: userName.trim() };
 
                     // Only set isTigreActive to false here, it will be set to true by handleTigreCodeSubmit
                     profileUpdate.isTigreActive = false;
 
-                    console.log("DEBUG PROFUNDO: handleConfirmUserName - Guardando perfil de usuario:", { userId: userId, userName: userName.trim(), isTigreActive: profileUpdate.isTigreActive });
+                    console.log("DEBUG PROFUNDO: handleConfirmUserName - Saving user profile:", { userId: userId, userName: userName.trim(), isTigreActive: profileUpdate.isTigreActive });
                     await window.setDoc(userProfileRef, profileUpdate, { merge: true });
+                    console.log("DEBUG PROFUNDO: handleConfirmUserName - User profile saved.");
                     // No need to set localStorage here, userName state is already updated
                     setUserNameConfirmed(true);
-                    showMessage('¡Nombre de usuario confirmado!', 'success');
+                    showMessage('Username confirmed!', 'success');
                     setIsTigre(profileUpdate.isTigreActive); // This will be false here
 
                     // NEW LOGIC: Only show Tigre code input IF userName is Julian360 AND isTigre is NOT active
                     if (userName.trim() === 'Julian360' && !profileUpdate.isTigreActive) {
                         setShowTigreCodeInput(true);
-                        console.log("DEBUG PROFUNDO: handleConfirmUserName - Usuario es Julian360 y modo Tigre inactivo. Mostrando input de código Tigre.");
+                        console.log("DEBUG PROFUNDO: handleConfirmUserName - User is Julian360 and Tigre mode inactive. Showing Tigre code input.");
                     } else {
                         setShowTigreCodeInput(false);
-                        console.log("DEBUG PROFUNDO: handleConfirmUserName - Usuario NO es Julian360 o modo Tigre activo. Ocultando input de código Tigre.");
+                        console.log("DEBUG PROFUNDO: handleConfirmUserName - User is NOT Julian360 or Tigre mode active. Hiding Tigre code input.");
                     }
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error al guardar el nombre de usuario:", error);
+                    console.error("DEBUG PROFUNDO: Error saving username (catch block):", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                        showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
                     } else {
-                        showMessage("Error al guardar el nombre de usuario. Inténtalo de nuevo.", 'error');
+                        showMessage("Error saving username. Please try again.", 'error');
                     }
+                    setIsLoading(false); // Ensure isLoading is false on error
                 } finally {
+                    console.log("DEBUG PROFUNDO: handleConfirmUserName - Finally block executed. Setting isLoading to false.");
                     setIsLoading(false);
                 }
             }, [userName, isAuthReady, db, userId, showMessage, setIsLoading, setShowTigreCodeInput, setIsTigre, setUserNameConfirmed]);
 
             const handleTigreCodeSubmit = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - userId actual:", userId);
-                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Código ingresado:", tigreCode);
+                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - current userId:", userId);
+                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Entered code:", tigreCode);
                 if (parseInt(tigreCode) === (15476 * 1000 + 767)) {
                     setIsTigre(true);
-                    showMessage('Modo Tigre activado. Ahora puedes eliminar cualquier canal.', 'success');
+                    showMessage('Tigre mode activated. You can now delete any channel.', 'success');
                     setShowTigreCodeInput(false);
 
                     if (db && userId) {
                         try {
                             const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
-                            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Intentando activar modo Tigre en Firestore para userId:", userId, "con isTigreActive: true (booleano).");
+                            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Attempting to activate Tigre mode in Firestore for userId:", userId, "with isTigreActive: true (boolean).");
                             await window.setDoc(userProfileRef, { isTigreActive: true }, { merge: true });
-                            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Modo Tigre activado en Firestore para el usuario:", userId);
+                            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Tigre mode activated in Firestore for user:", userId);
                             const updatedProfileSnap = await window.getDoc(userProfileRef);
                             if (updatedProfileSnap.exists()) {
-                                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Perfil de usuario LEÍDO después de la actualización:", updatedProfileSnap.data());
+                                console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - User profile READ after update:", updatedProfileSnap.data());
                             }
                         } catch (error) {
-                            console.error("DEBUG PROFUNDO: handleTigreCodeSubmit - Error al activar el modo Tigre en Firestore:", error);
-                            showMessage("Error al guardar el estado de Tigre. Inténtalo de nuevo.", 'error');
+                            console.error("DEBUG PROFUNDO: handleTigreCodeSubmit - Error activating Tigre mode in Firestore:", error);
+                            showMessage("Error saving Tigre status. Please try again.", 'error');
                         }
                     }
 
                 } else {
-                    showMessage('Código incorrecto. Inténtalo de nuevo.', 'error');
+                    showMessage('Incorrect code. Please try again.', 'error');
                     setTigreCode('');
-                    console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Código incorrecto.");
+                    console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Incorrect code.");
                 }
             }, [tigreCode, showMessage, setIsTigre, setShowTigreCodeInput, setTigreCode, db, userId]);
 
             const handleCreateChannel = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: handleCreateChannel - Initiated.");
                 if (channelName.trim() === '') {
-                    showMessage('Por favor, ingresa un nombre para el canal.', 'error');
+                    showMessage('Please enter a name for the channel.', 'error');
                     if (channelInputRef.current) {
                         channelInputRef.current.focus();
                     }
                     return;
                 }
                 if (channelName.trim().length > 128) {
-                    showMessage('El nombre del canal no puede exceder los 128 caracteres.', 'error');
+                    showMessage('Channel name cannot exceed 128 characters.', 'error');
                     return;
                 }
                 if (!isAuthReady || !db || !userId) {
-                    console.warn("DEBUG PROFUNDO: handleCreateChannel - Firebase no está listo aún. Por favor, espera.");
-                    showMessage("La autenticación no está lista. Inténtalo de nuevo.", 'error');
+                    console.warn("DEBUG PROFUNDO: handleCreateChannel - Firebase is not ready yet. Please wait.");
+                    showMessage("Authentication is not ready. Please try again.", 'error');
                     return;
                 }
 
@@ -613,18 +748,19 @@
                 const originalChannelInput = channelName.trim();
 
                 setIsLoading(true);
+                console.log("DEBUG PROFUNDO: handleCreateChannel - isLoading set to true.");
                 try {
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
+                    console.log("DEBUG PROFUNDO: handleCreateChannel - Attempting to get channel doc.");
                     const docSnap = await window.getDoc(channelDocRef);
-
-                    // ELIMINADO: dailyCoRoomUrl
+                    console.log("DEBUG PROFUNDO: handleCreateChannel - Channel doc snap received.");
 
                     if (docSnap.exists()) {
                         const existingChannelDisplayName = docSnap.data().displayName || normalizedChannelName;
                         setActiveChannel(existingChannelDisplayName);
                         setCurrentPage('channel');
-                        showMessage(`Te has unido al canal: ${existingChannelDisplayName}`, 'success');
-                        console.log("DEBUG PROFUNDO: handleCreateChannel - Canal existente unido:", existingChannelDisplayName);
+                        showMessage(`You have joined the channel: ${existingChannelDisplayName}`, 'success');
+                        console.log("DEBUG PROFUNDO: handleCreateChannel - Existing channel joined:", existingChannelDisplayName);
                     } else {
                         await window.setDoc(channelDocRef, {
                             name: normalizedChannelName,
@@ -632,63 +768,82 @@
                             createdAt: new Date().toISOString(),
                             createdBy: userId,
                             creatorUserName: userName,
-                            // ELIMINADO: dailyCoRoomUrl
-                            lastActivity: window.serverTimestamp()
+                            lastActivity: window.serverTimestamp(),
+                            isStreaming: false, // NEW: Initialize streaming status
+                            streamerId: null // NEW: Initialize streamer ID
                         });
                         setActiveChannel(originalChannelInput);
                         setCurrentPage('channel');
-                        showMessage(`¡Canal "${originalChannelInput}" creado y te has unido!`, 'success');
-                        console.log("DEBUG PROFUNDO: handleCreateChannel - Canal creado y unido:", originalChannelInput);
+                        showMessage(`Channel "${originalChannelInput}" created and you have joined!`, 'success');
+                        console.log("DEBUG PROFUNDO: handleCreateChannel - Channel created and joined:", originalChannelInput);
                     }
 
                     const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
+                    console.log("DEBUG PROFUNDO: handleCreateChannel - Attempting to add member.");
                     await window.setDoc(memberDocRef, {
                         userName: userName,
                         joinedAt: window.serverTimestamp()
                     }, { merge: true });
-                    console.log("DEBUG PROFUNDO: handleCreateChannel - Miembro añadido al canal:", userId);
+                    console.log("DEBUG PROFUNDO: handleCreateChannel - Member added. Setting isLoading to false.");
 
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error al crear o unirse al canal:", error);
+                    console.error("DEBUG PROFUNDO: Error creating or joining channel (catch block):", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                        showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
                     } else {
-                        showMessage("Error al crear o unirse al canal. Consulta la consola.", 'error');
+                        showMessage("Error creating or joining channel. Check the console.", 'error');
                     }
+                    setIsLoading(false); // Ensure isLoading is false on error
                 } finally {
+                    console.log("DEBUG PROFUNDO: handleCreateChannel - Finally block executed. Setting isLoading to false.");
                     setIsLoading(false);
                 }
             }, [channelName, userName, isAuthReady, db, userId, showMessage, setIsLoading, setCurrentPage, setActiveChannel]);
 
             const handleJoinChannelFromExplore = React.useCallback(async (channelToJoin) => {
+                console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Initiated for channel:", channelToJoin.name);
                 setActiveChannel(channelToJoin.name);
                 setCurrentPage('channel');
-                // ELIMINADO: dailyCallFrame.leave() y relacionados
-                showMessage(`Te has unido al canal: ${channelToJoin.name}`, 'success');
-                console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Unido al canal:", channelToJoin.name);
+                showMessage(`You have joined the channel: ${channelToJoin.name}`, 'success');
+                console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Joined channel:", channelToJoin.name);
 
-                if (isAuthReady && db && userId && userName) {
+                if (!isAuthReady || !db || !userId || !userName) {
+                    console.warn("DEBUG PROFUNDO: handleJoinChannelFromExplore - Firebase, user, or username not ready. Cannot add member.");
+                    return;
+                }
+
+                setIsLoading(true);
+                console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - isLoading set to true.");
+                try {
                     const normalizedChannelName = channelToJoin.name.toLowerCase();
                     const memberDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/members`, userId);
-                    try {
-                        console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Añadiendo miembro al unirse al canal:", userId);
-                        await window.setDoc(memberDocRef, {
-                            userName: userName,
-                            joinedAt: window.serverTimestamp()
-                        }, { merge: true });
-                    } catch (error) {
-                        console.error("DEBUG PROFUNDO: Error al añadir miembro al unirse al canal:", error);
+                    console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Attempting to add member.");
+                    await window.setDoc(memberDocRef, {
+                        userName: userName,
+                        joinedAt: window.serverTimestamp()
+                    }, { merge: true });
+                    console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Member added. Setting isLoading to false.");
+                } catch (error) {
+                    console.error("DEBUG PROFUNDO: Error adding member when joining channel (catch block):", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
+                    } else {
+                        showMessage("Error adding member to channel. Check the console.", 'error');
                     }
+                    setIsLoading(false); // Ensure isLoading is false on error
+                } finally {
+                    console.log("DEBUG PROFUNDO: handleJoinChannelFromExplore - Finally block executed. Setting isLoading to false.");
+                    setIsLoading(false);
                 }
-            }, [userName, isAuthReady, db, userId, showMessage, setCurrentPage, setActiveChannel]); // ELIMINADO: dailyCallFrame de dependencias
+            }, [userName, isAuthReady, db, userId, showMessage, setCurrentPage, setActiveChannel]);
 
             const handleSendMessage = React.useCallback(async () => {
                 if (currentMessage.trim() === '') {
                     return;
                 }
                 if (!isAuthReady || !db || !userId || !activeChannel || !userName) {
-                    console.warn("DEBUG PROFUNDO: handleSendMessage - Firebase, usuario, canal o nombre de usuario no están listos. No se puede enviar el mensaje.");
-                    showMessage("No se pudo enviar el mensaje. La aplicación no está lista.", 'error');
+                    console.warn("DEBUG PROFUNDO: handleSendMessage - Firebase, user, channel or username are not ready. Cannot send message.");
+                    showMessage("Could not send message. Application is not ready.", 'error');
                     return;
                 }
 
@@ -696,7 +851,7 @@
 
                 try {
                     const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
-                    console.log("DEBUG PROFUNDO: handleSendMessage - Enviando mensaje:", currentMessage.trim(), "a canal:", normalizedActiveChannel);
+                    console.log("DEBUG PROFUNDO: handleSendMessage - Sending message:", currentMessage.trim(), "to channel:", normalizedActiveChannel);
                     await window.addDoc(messagesColRef, {
                         text: currentMessage.trim(),
                         senderId: userId,
@@ -708,29 +863,29 @@
 
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
                     await window.setDoc(channelDocRef, { lastActivity: window.serverTimestamp() }, { merge: true });
-                    console.log("DEBUG PROFUNDO: handleSendMessage - Última actividad del canal actualizada.");
+                    console.log("DEBUG PROFUNDO: handleSendMessage - Channel last activity updated.");
 
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error al enviar mensaje:", error);
+                    console.error("DEBUG PROFUNDO: Error sending message:", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                        showMessage("Error de conexión o permisos al enviar mensaje. Verifica las reglas de Firestore.", 'error');
+                        showMessage("Connection error or permissions when sending message. Check Firestore rules.", 'error');
                     } else {
-                        showMessage("Error al enviar mensaje. Consulta la consola.", 'error');
+                        showMessage("Error sending message. Check the console.", 'error');
                     }
                 }
             }, [currentMessage, userName, activeChannel, isAuthReady, db, userId, showMessage, scrollToBottom]);
 
             const handleDeleteChannel = React.useCallback(async (channelDisplayName) => {
-                console.log("DEBUG PROFUNDO: handleDeleteChannel - userId actual:", userId);
-                console.log("DEBUG PROFUNDO: handleDeleteChannel - Iniciando eliminación para canal:", channelDisplayName);
+                console.log("DEBUG PROFUNDO: handleDeleteChannel - current userId:", userId);
+                console.log("DEBUG PROFUNDO: handleDeleteChannel - Initiating deletion for channel:", channelDisplayName);
                 const userConfirmed = await new Promise((resolve) => {
                     const confirmModal = document.createElement('div');
                     confirmModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
                     confirmModal.innerHTML = `
                         <div class="bg-white p-6 rounded-lg shadow-xl text-center">
-                            <p class="mb-4 text-lg">¿Estás seguro de que quieres eliminar el canal "${channelDisplayName}"? Esta acción es irreversible.</p>
-                            <button id="confirmDelete" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg mr-2">Sí, Eliminar</button>
-                            <button id="cancelDelete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                            <p class="mb-4 text-lg">Are you sure you want to delete channel "${channelDisplayName}"? This action is irreversible.</p>
+                            <button id="confirmDelete" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg mr-2">Yes, Delete</button>
+                            <button id="cancelDelete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
                         </div>
                     `;
                     document.body.appendChild(confirmModal);
@@ -746,38 +901,39 @@
                 });
 
                 if (!userConfirmed) {
-                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Eliminación cancelada por el usuario.");
+                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Deletion canceled by user.");
                     return;
                 }
 
                 if (!isAuthReady || !db || !userId) {
-                    console.warn("DEBUG PROFUNDO: handleDeleteChannel - Firebase no está listo o db/userId es null. No se puede eliminar.");
-                    showMessage("Firebase no está listo o no tienes un ID de usuario. No se puede eliminar el canal.", 'error');
+                    console.warn("DEBUG PROFUNDO: handleDeleteChannel - Firebase is not ready or db/userId is null. Cannot delete.");
+                    showMessage("Firebase is not ready or you don't have a user ID. Cannot delete channel.", 'error');
                     return;
                 }
 
                 const normalizedChannelId = channelDisplayName.toLowerCase();
 
                 setIsLoading(true);
+                console.log("DEBUG PROFUNDO: handleDeleteChannel - isLoading set to true.");
                 try {
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelId);
                     const docSnap = await window.getDoc(channelDocRef);
 
                     if (!docSnap.exists()) {
-                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Canal no existe.");
-                        showMessage("El canal no existe.", 'error');
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Channel does not exist.");
+                        showMessage("The channel does not exist.", 'error');
                         setIsLoading(false);
                         return;
                     }
 
-                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Valores para la evaluación de permisos:");
-                    console.log("DEBUG PROFUNDO:   - userId (actual):", userId);
-                    console.log("DEBUG PROFUNDO:   - isTigre (estado React):", isTigre);
-                    console.log("DEBUG PROFUNDO:   - channel.createdBy (desde Firestore):", docSnap.data().createdBy);
-                    console.log("DEBUG PROFUNDO:   - ¿userId === channel.createdBy?:", userId === docSnap.data().createdBy);
+                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Values for permission evaluation:");
+                    console.log("DEBUG PROFUNDO:   - userId (current):", userId);
+                    console.log("DEBUG PROFUNDO:   - isTigre (React state):", isTigre);
+                    console.log("DEBUG PROFUNDO:   - channel.createdBy (from Firestore):", docSnap.data().createdBy);
+                    console.log("DEBUG PROFUNDO:   - userId === channel.createdBy?:", userId === docSnap.data().createdBy);
 
                     if (isTigre || docSnap.data().createdBy === userId) {
-                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Permiso CONCEDIDO. Iniciando eliminación de subcolecciones y canal.");
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Permission GRANTED. Initiating subcollection and channel deletion.");
 
                         const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`);
                         const messagesSnapshot = await window.getDocs(messagesColRef);
@@ -785,7 +941,7 @@
                         messagesSnapshot.forEach(msgDoc => {
                             deleteMessagePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/messages`, msgDoc.id)));
                         });
-                        console.log(`DEBUG PROFUNDO: handleDeleteChannel - Eliminando ${deleteMessagePromises.length} mensajes.`);
+                        console.log(`DEBUG PROFUNDO: handleDeleteChannel - Deleting ${deleteMessagePromises.length} messages.`);
                         await Promise.all(deleteMessagePromises);
 
                         const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`);
@@ -794,43 +950,404 @@
                         membersSnapshot.forEach(memberDoc => {
                             deleteMemberPromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`, memberDoc.id)));
                         });
-                        console.log(`DEBUG PROFUNDO: handleDeleteChannel - Eliminando ${deleteMemberPromises.length} miembros.`);
+                        console.log(`DEBUG PROFUNDO: handleDeleteChannel - Deleting ${deleteMemberPromises.length} members.`);
                         await Promise.all(deleteMemberPromises);
 
 
                         await window.deleteDoc(channelDocRef);
-                        showMessage(`Canal "${channelDisplayName}" eliminado con éxito.`, 'success');
-                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Canal principal eliminado.");
+                        showMessage(`Channel "${channelDisplayName}" successfully deleted.`, 'success');
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Main channel deleted.");
                         fetchChannels();
                     } else {
-                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Permiso DENEGADO. Condiciones no cumplidas.");
-                        showMessage("No tienes permiso para eliminar este canal.", 'error');
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Permission DENIED. Conditions not met.");
+                        showMessage("You do not have permission to delete this channel.", 'error');
                     }
                 } catch (error) {
-                    console.error("DEBUG PROFUNDO: Error al eliminar el canal (catch general):", error);
+                    console.error("DEBUG PROFUNDO: Error deleting channel (catch general):", error);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
-                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                        showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
                         } else {
-                        showMessage("Error al eliminar el canal. Consulta la consola.", 'error');
+                        showMessage("Error deleting channel. Check the console.", 'error');
                     }
+                    setIsLoading(false); // Ensure isLoading is false on error
                 } finally {
+                    console.log("DEBUG PROFUNDO: handleDeleteChannel - Finally block executed. Setting isLoading to false.");
                     setIsLoading(false);
                 }
             }, [isAuthReady, db, userId, isTigre, showMessage, setIsLoading, fetchChannels]);
 
+            // WebRTC Functions
+            const createPeerConnection = React.useCallback((currentAuthUserId) => { // Pass userId as argument
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }, // Google's public STUN server
+                    ],
+                });
 
-            // ELIMINADO: Efecto para cargar el SDK de Daily.co de forma robusta
+                pc.onicecandidate = async (event) => {
+                    if (event.candidate) {
+                        // Use the userId passed as argument
+                        console.log("DEBUG PROFUNDO: ICE candidate generated. currentAuthUserId (passed to PC):", currentAuthUserId);
 
-            // ELIMINADO: handleToggleCamera function
-            const handleToggleCamera = React.useCallback(() => {
-                showMessage("La función de streaming no está habilitada en esta versión.", 'info');
-                // No hace nada
-            }, [showMessage]);
+                        if (!currentAuthUserId) {
+                            console.error("DEBUG PROFUNDO: No authenticated user ID available for ICE candidate. Aborting.");
+                            return;
+                        }
+                        const normalizedActiveChannel = activeChannel.toLowerCase();
+                        await window.addDoc(window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`), {
+                            candidate: event.candidate.toJSON(),
+                            senderId: currentAuthUserId, // Use directly obtained user ID
+                            timestamp: window.serverTimestamp(),
+                        });
+                    }
+                };
 
+                pc.ontrack = (event) => {
+                    console.log("DEBUG PROFUNDO: Remote track received:", event.streams[0]);
+                    setRemoteStream(event.streams[0]);
+                    setIsReceivingStream(true);
+                };
+
+                setPeerConnection(pc);
+                return pc;
+            }, [activeChannel, db]);
+
+
+            const startStreaming = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: startStreaming - Initiated.");
+                // Set isStartingStream to true immediately
+                setIsStartingStream(true);
+
+                // Get the current user ID directly from Firebase Auth right before using it
+                const currentAuthUser = auth.currentUser; // Use auth from state
+                const currentAuthUserId = currentAuthUser ? currentAuthUser.uid : null;
+
+                // Ensure auth and db are ready and currentAuthUserId is set
+                if (!isAuthReady || !db || !currentAuthUserId || !activeChannel) {
+                    console.warn("DEBUG PROFUNDO: Application not ready for streaming. isAuthReady:", isAuthReady, "db:", db, "currentAuthUserId:", currentAuthUserId, "activeChannel:", activeChannel);
+                    let errorMessage = "Application not ready for streaming.";
+                    if (!isAuthReady) errorMessage += " (Auth not ready)";
+                    if (!db) errorMessage += " (Firestore not ready)";
+                    if (!currentAuthUserId) errorMessage += " (User not logged in)";
+                    if (!activeChannel) errorMessage += " (No active channel)";
+                    showMessage(errorMessage, 'error');
+                    setIsLoading(false); // Ensure loading is off if we exit early
+                    setIsStartingStream(false); // Reset flag on early exit
+                    return;
+                }
+                if (isStreaming) {
+                    showMessage("You are already streaming.", 'info');
+                    setIsLoading(false); // Ensure loading is off
+                    setIsStartingStream(false); // Reset flag
+                    return;
+                }
+
+                setIsLoading(true);
+                console.log("DEBUG PROFUNDO: startStreaming - isLoading set to true.");
+                let pc; // Declare pc here so it's accessible in finally block
+                let stream; // Declare stream here
+
+                try {
+                    console.log("DEBUG PROFUNDO: startStreaming - Requesting media devices.");
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    setLocalStream(stream);
+                    if (localVideoRef.current) {
+                        localVideoRef.current.srcObject = stream;
+                    }
+                    console.log("DEBUG PROFUNDO: startStreaming - Media devices obtained.");
+
+                    pc = createPeerConnection(currentAuthUserId); // Assign to declared pc
+                    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+                    console.log("DEBUG PROFUNDO: startStreaming - Tracks added to peer connection.");
+
+                    // NEW: Log PC states before offer creation
+                    console.log(`DEBUG PROFUNDO: PeerConnection signalingState before offer: ${pc.signalingState}`);
+                    console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState before offer: ${pc.iceGatheringState}`);
+                    console.log("DEBUG PROFUNDO: PeerConnection object before offer:", pc);
+
+
+                    // NEW: Add try-catch block for offer creation and setting local description
+                    try {
+                        console.log("DEBUG PROFUNDO: startStreaming - Attempting to create offer.");
+                        const offer = await pc.createOffer();
+                        console.log("DEBUG PROFUNDO: startStreaming - Offer created:", offer);
+                        await pc.setLocalDescription(offer);
+                        console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description.");
+                    } catch (offerError) {
+                        console.error("DEBUG PROFUNDO: Error creating or setting offer (WebRTC):", offerError);
+                        showMessage(`Error al iniciar stream (WebRTC Offer): ${offerError.message}`, 'error');
+                        // Clean up WebRTC resources on error
+                        if (stream) {
+                            stream.getTracks().forEach(track => track.stop());
+                        }
+                        if (pc) {
+                            pc.close();
+                        }
+                        setLocalStream(null);
+                        setPeerConnection(null);
+                        setIsStreaming(false);
+                        setIsStreamer(false);
+                        setIsLoading(false);
+                        setIsStartingStream(false);
+                        return; // Exit if offer creation/setting fails
+                    }
+
+
+                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+
+                    // Explicit try-catch for Firestore update
+                    try {
+                        const payload = {
+                            isStreaming: true,
+                            streamerId: currentAuthUserId, // Use currentAuthUserId
+                            streamerUserName: userName,
+                            offer: pc.localDescription.toJSON(), // Use localDescription after it's set
+                            lastActivity: window.serverTimestamp()
+                        };
+                        console.log("DEBUG PROFUNDO: startStreaming - Preparing to send payload to Firestore:", payload); // NEW LOG
+                        await window.setDoc(channelDocRef, payload, { merge: true });
+                        console.log("DEBUG PROFUNDO: startStreaming - Channel doc updated successfully in Firestore.");
+
+                        // *** IMPORTANT: Set local states AFTER successful Firestore update ***
+                        setIsStreaming(true);
+                        setIsStreamer(true);
+                        showMessage("Streaming started!", 'success');
+                        console.log("DEBUG PROFUNDO: Streaming started, offer sent to Firestore.");
+
+                    } catch (firestoreError) {
+                        console.error("DEBUG PROFUNDO: Firestore Error updating channel for streaming:", firestoreError);
+                        showMessage(`Error al iniciar stream: ${firestoreError.message}. Revisa tus reglas de Firestore.`, 'error');
+                        // Crucial: If Firestore update fails, stop local stream and reset states
+                        if (stream) { // Use declared stream
+                            stream.getTracks().forEach(track => track.stop());
+                        }
+                        if (pc) { // Use declared pc
+                            pc.close();
+                        }
+                        setLocalStream(null);
+                        setPeerConnection(null);
+                        setIsStreaming(false);
+                        setIsStreamer(false);
+                        setIsLoading(false); // Make sure loading is off
+                        setIsStartingStream(false); // Reset flag on error
+                        return; // Exit the function early if Firestore update fails
+                    }
+
+                    // Listen for answer from viewers
+                    const unsubscribeOffer = window.onSnapshot(channelDocRef, async (docSnap) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            // Only process answer if it exists, and we haven't already set it as remote description
+                            if (data.answer && pc.remoteDescription?.type !== 'answer') {
+                                console.log("DEBUG PROFUNDO: Received answer from viewer:", data.answer);
+                                const answer = new RTCSessionDescription(data.answer);
+                                await pc.setRemoteDescription(answer);
+                                // Clear the answer from Firestore after processing
+                                await window.setDoc(channelDocRef, { answer: window.deleteField() }, { merge: true });
+                            }
+                        }
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error listening for answer:", error);
+                    });
+
+                    // Listen for ICE candidates from viewers
+                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`);
+                    const unsubscribeCandidates = window.onSnapshot(iceCandidatesColRef, (snapshot) => {
+                        snapshot.docChanges().forEach(async (change) => {
+                            if (change.type === 'added' && change.doc.data().senderId !== currentAuthUserId) { // Compare with currentAuthUserId
+                                const candidate = new RTCIceCandidate(change.doc.data().candidate);
+                                console.log("DEBUG PROFUNDO: Adding remote ICE candidate:", candidate);
+                                await pc.addIceCandidate(candidate);
+                                // Delete the candidate after adding it
+                                await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, change.doc.id));
+                            }
+                        });
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error listening for ICE candidates:", error);
+                    });
+
+                    setPeerConnection(pc); // Update state with the active PC
+                    // Consider storing unsubscribe functions in a ref or state if you need to clean them up explicitly
+                    // For simplicity, they will be cleaned up when component unmounts or activeChannel changes
+                } catch (error) {
+                    console.error("DEBUG PROFUNDO: Error starting stream (general catch block):", error);
+                    showMessage(`Error starting stream: ${error.message}`, 'error');
+                    // Ensure all resources are cleaned up even on general errors
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    if (pc) {
+                        pc.close();
+                    }
+                    setLocalStream(null);
+                    setPeerConnection(null);
+                    setIsStreaming(false);
+                    setIsStreamer(false);
+                    setIsLoading(false); // Ensure isLoading is false on error
+                    setIsStartingStream(false); // Reset flag on error
+                } finally {
+                    console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. Setting isLoading to false.");
+                    setIsLoading(false);
+                    setIsStartingStream(false); // Always reset flag in finally
+                }
+            }, [isAuthReady, db, activeChannel, userName, showMessage, setIsLoading, createPeerConnection, localStream, isStreaming, auth]);
+
+
+            const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
+                console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
+                // Get the current user ID directly from Firebase Auth right before using it
+                const currentAuthUser = auth.currentUser; // Use auth from state
+                const currentAuthUserId = currentAuthUser ? currentAuthUser.uid : null;
+
+                if (!isAuthReady || !db || !currentAuthUserId || !channelName || currentAuthUserId === streamerId || isReceivingStream) {
+                    console.log("DEBUG PROFUNDO: Not ready to receive stream or already receiving or is streamer. currentAuthUserId:", currentAuthUserId, "streamerId:", streamerId, "isReceivingStream:", isReceivingStream);
+                    return;
+                }
+
+                setIsLoading(true);
+                console.log("DEBUG PROFUNDO: startReceivingStream - isLoading set to true.");
+                try {
+                    const normalizedChannelName = channelName.toLowerCase();
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Attempting to get channel doc for offer.");
+                    const docSnap = await window.getDoc(channelDocRef);
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Channel doc snap received.");
+
+                    if (!docSnap.exists() || !docSnap.data().isStreaming || !docSnap.data().offer) {
+                        showMessage("No active stream found in this channel.", 'info');
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    const offer = new RTCSessionDescription(docSnap.data().offer);
+                    const pc = createPeerConnection(currentAuthUserId); // Pass currentAuthUserId to createPeerConnection
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Peer connection created.");
+
+                    await pc.setRemoteDescription(offer);
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Remote description set.");
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Answer created and set as local description.");
+
+                    // Send answer back to streamer
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Sending answer to streamer.");
+                    try {
+                        await window.setDoc(channelDocRef, { answer: answer.toJSON() }, { merge: true });
+                        console.log("DEBUG PROFUNDO: Sent answer to streamer.");
+                    } catch (firestoreError) {
+                        console.error("DEBUG PROFUNDO: Firestore Error sending answer to streamer:", firestoreError);
+                        showMessage(`Error al unirse al stream: ${firestoreError.message}. Revisa tus reglas de Firestore.`, 'error');
+                        if (pc) { pc.close(); }
+                        setPeerConnection(null);
+                        setRemoteStream(null);
+                        setIsReceivingStream(false);
+                        setIsLoading(false);
+                        return;
+                    }
+
+
+                    // Listen for ICE candidates from streamer
+                    const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelName}/iceCandidates`);
+                    const unsubscribeCandidates = window.onSnapshot(iceCandidatesColRef, (snapshot) => {
+                        snapshot.docChanges().forEach(async (change) => {
+                            if (change.type === 'added' && change.doc.data().senderId === streamerId) {
+                                const candidate = new RTCIceCandidate(change.doc.data().candidate);
+                                console.log("DEBUG PROFUNDO: Adding remote ICE candidate:", candidate);
+                                await pc.addIceCandidate(candidate);
+                                // Delete the candidate after adding it
+                                await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, change.doc.id));
+                            }
+                        });
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error listening for ICE candidates (viewer):", error);
+                    });
+
+                    setPeerConnection(pc);
+                    setIsReceivingStream(true);
+                    showMessage("Joining stream...", 'success');
+                    console.log("DEBUG PROFUNDO: Started receiving stream.");
+                } catch (error) {
+                    console.error("DEBUG PROFUNDO: Error receiving stream (general catch block):", error);
+                    showMessage(`Error joining stream: ${error.message}`, 'error');
+                    if (peerConnection) {
+                        peerConnection.close();
+                        setPeerConnection(null);
+                    }
+                    setRemoteStream(null);
+                    setIsReceivingStream(false);
+                    setIsLoading(false); // Ensure isLoading is false on error
+                } finally {
+                    console.log("DEBUG PROFUNDO: startReceivingStream - Finally block executed. Setting isLoading to false.");
+                    setIsLoading(false);
+                }
+            }, [isAuthReady, db, showMessage, setIsLoading, createPeerConnection, peerConnection, isReceivingStream, auth]);
+
+
+            const stopStreaming = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: stopStreaming - Initiated.");
+                if (peerConnection) {
+                    peerConnection.close();
+                    setPeerConnection(null);
+                    console.log("DEBUG PROFUNDO: stopStreaming - Peer connection closed.");
+                }
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    setLocalStream(null);
+                    console.log("DEBUG PROFUNDO: stopStreaming - Local stream tracks stopped.");
+                }
+                setRemoteStream(null);
+                setIsStreaming(false);
+                setIsReceivingStream(false);
+                setIsStreamer(false);
+                console.log("DEBUG PROFUNDO: stopStreaming - Streaming states reset.");
+
+                // Update Firestore to indicate no active stream
+                if (db && activeChannel) {
+                    const normalizedActiveChannel = activeChannel.toLowerCase();
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+                    try {
+                        console.log("DEBUG PROFUNDO: stopStreaming - Updating channel doc in Firestore.");
+                        await window.setDoc(channelDocRef, {
+                            isStreaming: false,
+                            streamerId: null,
+                            streamerUserName: null,
+                            offer: window.deleteField(), // Remove offer
+                            answer: window.deleteField() // Remove answer
+                        }, { merge: true });
+                        // Clear all ICE candidates for this channel
+                        const iceCandidatesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`);
+                        const snapshot = await window.getDocs(iceCandidatesColRef);
+                        const deletePromises = [];
+                        snapshot.forEach(doc => {
+                            deletePromises.push(window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, doc.id)));
+                        });
+                        console.log(`DEBUG PROFUNDO: stopStreaming - Deleting ${deletePromises.length} ICE candidates.`);
+                        await Promise.all(deletePromises);
+
+                        showMessage("Streaming stopped and channel status updated.", 'info');
+                        console.log("DEBUG PROFUNDO: Streaming stopped, channel status in Firestore cleared.");
+                    } catch (error) {
+                        console.error("DEBUG PROFUNDO: Error updating channel streaming status in Firestore:", error);
+                        showMessage("Error stopping stream status in Firestore.", 'error');
+                    }
+                }
+            }, [peerConnection, localStream, activeChannel, db, showMessage]);
+
+
+            // Effect to assign streams to video elements
+            React.useEffect(() => {
+                if (localVideoRef.current && localStream) {
+                    localVideoRef.current.srcObject = localStream;
+                }
+            }, [localStream]);
 
             React.useEffect(() => {
-                // ELIMINADO: dailyCallFrame.leave()
-            }, []); // ELIMINADO: dailyCallFrame de dependencias
+                if (remoteVideoRef.current && remoteStream) {
+                    remoteVideoRef.current.srcObject = remoteStream;
+                }
+            }, [remoteStream]);
+
 
             const copyToClipboard = React.useCallback((text) => {
                 const textarea = document.createElement('textarea');
@@ -839,10 +1356,10 @@
                 textarea.select();
                 try {
                     document.execCommand('copy');
-                    showMessage(`"${text}" copiado al portapapeles!`, 'success');
+                    showMessage(`"${text}" copied to clipboard!`, 'success');
                 } catch (err) {
-                    console.error('Error al copiar al portapapeles:', err);
-                    showMessage('Error al copiar al portapapeles.', 'error');
+                    console.error('Error copying to clipboard:', err);
+                    showMessage('Error copying to clipboard.', 'error');
                 }
                 document.body.removeChild(textarea);
             }, [showMessage]);
@@ -862,15 +1379,15 @@
                 }
 
                 if (!isAuthReady || !db || !userId || !activeChannel) {
-                    showMessage("La aplicación no está lista para subir archivos. Inténtalo de nuevo.", 'error');
+                    showMessage("Application not ready to upload files. Please try again.", 'error');
                     return;
                 }
 
                 setIsLoading(true);
 
-                // --- Configuración de Cloudinary (REEMPLAZA ESTOS CON LOS TUYOS) ---
-                const cloudName = 'dq527zvti'; // Tu nombre de Cloudinary Cloud
-                const unsignedUploadPreset = 'jlchannel'; // El preset de carga sin firmar que creaste en Cloudinary
+                // --- Cloudinary Configuration (REPLACE THESE WITH YOURS) ---
+                const cloudName = 'dq527zvti'; // Your Cloudinary Cloud name
+                const unsignedUploadPreset = 'jlchannel'; // The unsigned upload preset you created in Cloudinary
                 // -------------------------------------------------------------
 
                 const formData = new FormData();
@@ -885,14 +1402,14 @@
 
                     if (!response.ok) {
                         const errorData = await response.json();
-                        console.error("Error al subir el archivo a Cloudinary:", errorData);
-                        showMessage(`Error al subir el archivo: ${errorData.error.message || 'Error desconocido'}`, 'error');
+                        console.error("Error uploading file to Cloudinary:", errorData);
+                        showMessage(`Error uploading file: ${errorData.error.message || 'Unknown error'}`, 'error');
                         return;
                     }
 
                     const data = await response.json();
                     const downloadURL = data.secure_url;
-                    console.log('Archivo disponible en Cloudinary:', downloadURL);
+                    console.log('File available on Cloudinary:', downloadURL);
 
                     const normalizedActiveChannel = activeChannel.toLowerCase();
                     const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
@@ -907,19 +1424,19 @@
                     });
 
                     setCurrentMessage('');
-                    showMessage('Archivo subido con éxito y enviado al chat.', 'success');
+                    showMessage('File successfully uploaded and sent to chat.', 'success');
                     scrollToBottom();
 
                 } catch (error) {
-                    console.error("Error en la subida a Cloudinary (catch general):", error);
-                    showMessage(`Error al iniciar la subida: ${error.message || 'Error desconocido'}`, 'error');
+                    console.error("Error in Cloudinary upload (general catch):", error);
+                    showMessage(`Error initiating upload: ${error.message || 'Unknown error'}`, 'error');
                 } finally {
                     setIsLoading(false);
                 }
             }, [activeChannel, isAuthReady, db, userId, userName, showMessage, setIsLoading, scrollToBottom]);
 
 
-            // PWA: Manejador para el botón de instalación
+            // PWA: Handler for the install button
             const handleInstallClick = React.useCallback(async () => {
                 if (deferredPrompt) {
                     deferredPrompt.prompt();
@@ -939,19 +1456,19 @@
                                 onClick={handleInstallClick}
                                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mb-3"
                             >
-                                Instalar App
+                                Install App
                             </button>
                         )}
 
                         <div className="mb-6">
                             <label htmlFor="username-input" className="block text-gray-700 text-sm font-bold mb-2">
-                                Tu Nombre de Usuario:
+                                Your Username:
                             </label>
                             <div className="flex gap-2">
                                 <input
                                     id="username-input"
                                     type="text"
-                                    placeholder="Nombre de usuario"
+                                    placeholder="Username"
                                     className="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
                                     value={userName}
                                     onChange={(e) => {
@@ -970,7 +1487,7 @@
                                         onClick={handleConfirmUserName}
                                         className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
                                     >
-                                        Confirmar
+                                        Confirm
                                     </button>
                                 )}
                                 {userNameConfirmed && (
@@ -982,12 +1499,12 @@
                                             setTigreCode('');
                                             if (db && userId) {
                                                 const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
-                                                window.setDoc(userProfileRef, { isTigreActive: false }, { merge: true }).catch(e => console.error("Error al desactivar Tigre en Firestore:", e));
+                                                window.setDoc(userProfileRef, { isTigreActive: false }, { merge: true }).catch(e => console.error("Error deactivating Tigre in Firestore:", e));
                                             }
                                         }}
                                         className="bg-gray-400 hover:bg-400 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
                                     >
-                                        Editar
+                                        Edit
                                     </button>
                                 )}
                             </div>
@@ -996,10 +1513,10 @@
                         {/* NEW LOGIC: showTigreCodeInput is now controlled by handleConfirmUserName */}
                         {userNameConfirmed && userName.trim() === 'Julian360' && showTigreCodeInput && !isTigre && (
                             <div className="mt-6 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
-                                <p className="mb-2 font-semibold">Modo Tigre: Ingresa el código de 8 dígitos para habilitar.</p>
+                                <p className="mb-2 font-semibold">Tigre Mode: Enter the 8-digit code to enable.</p>
                                 <input
                                     type="password"
-                                    placeholder="Código de 8 dígitos"
+                                    placeholder="8-digit code"
                                     className="w-full p-3 border border-yellow-400 rounded-lg focus:outline-none focus:ring-2 focus:focus:ring-yellow-500"
                                     value={tigreCode}
                                     onChange={(e) => setTigreCode(e.target.value)}
@@ -1009,13 +1526,13 @@
                                     onClick={handleTigreCodeSubmit}
                                     className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
                                 >
-                                    Confirmar Código
+                                    Confirm Code
                                 </button>
                             </div>
                         )}
                         {isTigre && (
                             <div className="mt-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
-                                <p className="font-semibold">¡Modo Tigre Activado!</p>
+                                <p className="font-semibold">Tigre Mode Activated!</p>
                             </div>
                         )}
 
@@ -1024,7 +1541,7 @@
                                 id="channel-name-input"
                                 ref={channelInputRef}
                                 type="text"
-                                placeholder="Nombre de canal"
+                                placeholder="Channel name"
                                 className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
                                 value={channelName}
                                 onChange={(e) => setChannelName(e.target.value)}
@@ -1043,7 +1560,7 @@
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mb-4"
                             disabled={!userNameConfirmed}
                         >
-                            Ingresar
+                            Enter
                         </button>
 
                         <button
@@ -1051,7 +1568,7 @@
                             className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl"
                             disabled={!userNameConfirmed}
                         >
-                            Explorar Canales
+                            Explore Channels
                         </button>
                     </div>
                 </div>
@@ -1064,15 +1581,15 @@
                             className="text-4xl font-extrabold text-gray-800 mb-2 cursor-pointer"
                             onClick={() => copyToClipboard(activeChannel)}
                         >
-                            Canal: <span className="text-blue-600">{activeChannel}</span>
+                            Channel: <span className="text-blue-600">{activeChannel}</span>
                         </h1>
-                        <p className="text-lg text-gray-600 mb-2">Usuario: <span className="font-bold text-purple-600">{userName}</span></p>
+                        <p className="text-lg text-gray-600 mb-2">User: <span className="font-bold text-purple-600">{userName}</span></p>
 
                         <div className="absolute top-4 right-4" ref={optionsMenuRef}>
                             <button
                                 onClick={() => setShowOptionsMenu(!showOptionsMenu)}
                                 className="text-gray-500 hover:text-gray-700 focus:outline-none"
-                                aria-label="Opciones del canal"
+                                aria-label="Channel options"
                             >
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -1089,28 +1606,56 @@
                             </button>
                             {showOptionsMenu && (
                                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
-                                    {/* Botón "Stream" ahora no hace nada */}
-                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { handleToggleCamera(); setShowOptionsMenu(false); }}>Stream 🎥</button>
-                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Adjuntar Archivo 📎</button>
-                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { setShowActivityPanel(true); setShowOptionsMenu(false); }}>Actividad 👥</button>
+                                    {isStreamer ? (
+                                        <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { stopStreaming(); setShowOptionsMenu(false); }}>Stop Stream ⏹️</button>
+                                    ) : (
+                                        <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { startStreaming(); setShowOptionsMenu(false); }}>Stream 🎥</button>
+                                    )}
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Attach File 📎</button>
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { setShowActivityPanel(true); setShowOptionsMenu(false); }}>Activity 👥</button>
                                 </div>
                             )}
                         </div>
 
-                        {/* ELIMINADO: div #daily-video-container */}
+                        {/* Video container for streaming */}
+                        {(isStreaming || isReceivingStream) && (
+                            <div className="relative w-full aspect-video bg-black rounded-lg mb-4 overflow-hidden">
+                                {isStreamer && localStream && (
+                                    <video
+                                        ref={localVideoRef}
+                                        autoPlay
+                                        muted
+                                        className="absolute inset-0 w-full h-full object-contain"
+                                        style={{ transform: 'scaleX(-1)' }} // Mirror local video
+                                    ></video>
+                                )}
+                                {!isStreamer && remoteStream && (
+                                    <video
+                                        ref={remoteVideoRef}
+                                        autoPlay
+                                        className="absolute inset-0 w-full h-full object-contain"
+                                    ></video>
+                                )}
+                                {(!localStream && !remoteStream) && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xl">
+                                        Waiting for stream...
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="mb-1 w-full bg-gray-100 p-1 rounded-xl shadow-inner border border-gray-200">
                             <div className="h-[70vh] md:h-[66vh] bg-white rounded-lg p-2 overflow-y-auto border border-gray-300 mb-1 flex flex-col" style={{ minHeight: '100px' }}>
                                 {chatMessages.length > 0 ? (
                                     chatMessages.map((msg) => (
                                         <div key={msg.id} className={`mb-2 p-2 rounded-lg ${msg.senderId === userId ? 'bg-blue-100 self-end text-right' : 'bg-gray-200 self-start text-left'}`} style={{ maxWidth: '80%' }}>
-                                            <p className="font-semibold text-xs">{msg.senderId === userId ? 'Tú' : msg.senderUserName}</p>
+                                            <p className="font-semibold text-xs">{msg.senderId === userId ? 'You' : msg.senderUserName}</p>
                                             {msg.fileUrl ? (
                                                 msg.fileType && msg.fileType.startsWith('image/') ? (
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block">
-                                                        <img src={msg.fileUrl} alt={msg.fileName || 'Imagen adjunta'} className="max-w-xs max-h-32 rounded-lg object-contain mb-1" />
+                                                        <img src={msg.fileUrl} alt={msg.fileName || 'Attached image'} className="max-w-xs max-h-32 rounded-lg object-contain mb-1" />
                                                         <span className="text-blue-600 underline text-sm md:text-base">
-                                                            🖼️ {msg.fileName || 'Imagen Adjunta'}
+                                                            🖼️ {msg.fileName || 'Attached Image'}
                                                         </span>
                                                     </a>
                                                 ) :
@@ -1118,7 +1663,7 @@
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block w-full max-w-sm">
                                                         <audio controls src={msg.fileUrl} className="w-full mb-1"></audio>
                                                         <span className="text-blue-600 underline text-sm md:text-base">
-                                                            🎵 {msg.fileName || 'Audio Adjunto'}
+                                                            🎵 {msg.fileName || 'Attached Audio'}
                                                         </span>
                                                     </a>
                                                 ) :
@@ -1128,30 +1673,30 @@
                                                             ▶️ <strong>Video</strong>
                                                         </p>
                                                         <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
-                                                            {msg.fileName || 'Video Adjunto'}
+                                                            {msg.fileName || 'Attached Video'}
                                                         </a>
                                                     </div>
                                                 ) : (
                                                     <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
-                                                        📎 {msg.fileName || 'Archivo Adjunto'}
+                                                        📎 {msg.fileName || 'Attached File'}
                                                     </a>
                                                 )
                                             ) : (
                                                 <p className="text-sm md:text-base text-gray-800">{msg.text}</p>
                                             )}
                                             <p className="text-xs text-gray-500 mt-1">
-                                                {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Enviando...'}
+                                                {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                                             </p>
                                         </div>
                                     ))
                                 ) : (
-                                    <p className="text-gray-500 italic m-auto">Sé el primero en enviar un mensaje.</p>
+                                    <p className="text-gray-500 italic m-auto">Be the first to send a message.</p>
                                 )}
                                 <div ref={chatMessagesEndRef} />
                             </div>
                             <input
                                 type="text"
-                                placeholder="Escribe tu mensaje..."
+                                placeholder="Write your message..."
                                 className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:focus:ring-blue-500"
                                 value={currentMessage}
                                 onChange={(e) => setCurrentMessage(e.target.value)}
@@ -1170,15 +1715,13 @@
                                 onChange={onFileSelected}
                             />
                         </div>
-
-                        {/* ELIMINADO: dailyError display */}
                     </div>
 
                     {showActivityPanel && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-end z-40">
                             <div className="bg-white w-full max-w-xs p-6 rounded-l-2xl shadow-lg flex flex-col">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-2xl font-bold text-gray-800">Actividad del Canal</h2>
+                                    <h2 className="text-2xl font-bold text-gray-800">Channel Activity</h2>
                                     <button
                                         onClick={() => setShowActivityPanel(false)}
                                         className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
@@ -1186,19 +1729,18 @@
                                         &times;
                                     </button>
                                 </div>
-                                <h3 className="text-lg font-semibold text-gray-700 mb-3">Miembros del Canal:</h3>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-3">Channel Members:</h3>
                                 <div className="flex-grow overflow-y-auto">
                                     {channelMembers.length > 0 ? (
                                         <ul className="space-y-2">
                                             {channelMembers.map((member) => (
                                                 <li key={member.id} className="flex items-center text-gray-700">
                                                     <span className="font-medium">{member.userName}</span>
-                                                    {/* ELIMINADO: onlineParticipants */}
                                                 </li>
                                             ))}
                                         </ul>
                                     ) : (
-                                        <p className="text-gray-500 italic">No hay miembros registrados aún.</p>
+                                        <p className="text-gray-500 italic">No members registered yet.</p>
                                     )}
                                 </div>
                             </div>
@@ -1210,14 +1752,14 @@
             const renderExplorePage = () => (
                 <div className="flex flex-col items-center justify-start min-h-screen bg-gradient-to-br from-teal-500 to-cyan-600 p-4 font-inter">
                     <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8 relative">
-                        <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Explorar Canales</h1>
+                        <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Explore Channels</h1>
                         <p className="text-lg text-gray-600 mb-8"> </p>
 
                         <div className="absolute top-4 right-4" ref={exploreMenuRef}>
                             <button
                                 onClick={() => setShowExploreMenu(!showExploreMenu)}
                                 className="text-gray-500 hover:text-gray-700 focus:outline-none"
-                                aria-label="Opciones de exploración"
+                                aria-label="Explore options"
                             >
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -1238,13 +1780,13 @@
                                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
                                         onClick={() => { setSortOption('activity'); setShowExploreMenu(false); setShowSearchInput(false); setSearchQuery(''); }}
                                     >
-                                        Mayor actividad
+                                        Most Active
                                     </button>
                                     <button
                                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
                                         onClick={() => { setSortOption('recent'); setShowExploreMenu(false); setShowSearchInput(false); setSearchQuery(''); }}
                                     >
-                                        Más Recientes
+                                        Most Recent
                                     </button>
                                     <button
                                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
@@ -1254,7 +1796,7 @@
                                             setSortOption('none');
                                         }}
                                     >
-                                        Buscar canal
+                                        Search Channel
                                     </button>
                                 </div>
                             )}
@@ -1264,7 +1806,7 @@
                             <div className="mb-6 mt-4">
                                 <input
                                     type="text"
-                                    placeholder="Buscar canal por nombre..."
+                                    placeholder="Search channel by name..."
                                     className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-lg"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -1279,27 +1821,30 @@
                                     <div key={channel.id} className="bg-gray-100 p-4 rounded-lg shadow-md flex flex-col items-center justify-between">
                                         <h3 className="text-xl font-semibold text-gray-800 mb-2">{channel.name}</h3>
                                         <p className="text-sm text-gray-600 mb-3">
-                                            Creado por: {channel.creatorUserName || 'Desconocido'}
+                                            Created by: {channel.creatorUserName || 'Unknown'}
                                         </p>
+                                        {channel.isStreaming && (
+                                            <span className="text-sm font-bold text-red-500 mb-2">🔴 LIVE</span>
+                                        )}
                                         <button
                                             onClick={() => handleJoinChannelFromExplore(channel)}
                                             className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 mb-2"
                                         >
-                                            Unirse
+                                            Join
                                         </button>
                                         {(userId === channel.createdBy || isTigre) && (
                                             <button
                                                 onClick={() => handleDeleteChannel(channel.name)}
                                                 className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300"
                                             >
-                                                Eliminar Canal
+                                                Delete Channel
                                             </button>
                                         )}
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-gray-500 italic"> </p>
+                            <p className="text-gray-500 italic">No channels available. Create one!</p>
                         )}
                     </div>
                 </div>
