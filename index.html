@@ -1064,7 +1064,7 @@
 
 
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
- // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+// NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
         const startStreaming = React.useCallback(async () => {
             console.log("DEBUG PROFUNDO: startStreaming - Initiated.");
 
@@ -1127,6 +1127,11 @@
                 const newPeerConnection = new RTCPeerConnection(servers);
                 setPeerConnection(newPeerConnection);
 
+                // NEW: Add onicegatheringstatechange listener immediately after PC creation
+                newPeerConnection.onicegatheringstatechange = () => {
+                    console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState changed to: ${newPeerConnection.iceGatheringState}`);
+                };
+
                 // Add local stream tracks to the peer connection
                 stream.getTracks().forEach(track => {
                     newPeerConnection.addTrack(track, stream);
@@ -1147,11 +1152,6 @@
                     } else {
                         console.log("DEBUG PROFUNDO: All ICE candidates gathered.");
                     }
-                };
-
-                // NEW: Add onicegatheringstatechange listener for debugging
-                newPeerConnection.onicegatheringstatechange = () => {
-                    console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState changed to: ${newPeerConnection.iceGatheringState}`);
                 };
 
                 // Handle remote stream when it arrives
@@ -1318,7 +1318,6 @@
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
         }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
-
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
