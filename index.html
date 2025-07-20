@@ -1065,9 +1065,10 @@
 
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
 // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-        // Version: 2025-07-20-DailyFix-v54
+              // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+        // Version: 2025-07-20-DailyFix-v55
         const startStreaming = React.useCallback(async () => {
-            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v54");
+            console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v55");
 
             // Get the current user ID directly from Firebase Auth right before using it
             const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1154,7 +1155,8 @@
                             // Normalize activeChannel for Firestore paths
                             const normalizedActiveChannel = activeChannel.toLowerCase();
                             // Get reference to the 'webrtc_data' document
-                            const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}`, 'webrtc_data');
+                            // FIX: Changed path to include 'webrtc_signaling' collection before 'webrtc_data' document
+                            const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc_signaling`, 'webrtc_data');
 
                             // Save offer to Firestore as a field in 'webrtc_data' document
                             await window.setDoc(webrtcDocRef, {
@@ -1203,23 +1205,23 @@
                         }
 
                     } catch (createOfferError) {
-                        console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC) from onnegotiationneeded: Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
-                        showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
-                        // Clean up WebRTC resources on error
-                        if (stream) {
-                            stream.getTracks().forEach(track => track.stop());
+                            console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC) from onnegotiationneeded: Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
+                            showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
+                            // Clean up WebRTC resources on error
+                            if (stream) {
+                                stream.getTracks().forEach(track => track.stop());
+                            }
+                            if (pcInstance) {
+                                pcInstance.close();
+                            }
+                            setLocalStream(null);
+                            setPeerConnection(null);
+                            setIsStreaming(false);
+                            setIsStreamer(false);
+                            setIsLoading(false);
+                            setIsStartingStream(false);
+                            return; // Exit if offer creation fails
                         }
-                        if (pcInstance) {
-                            pcInstance.close();
-                        }
-                        setLocalStream(null);
-                        setPeerConnection(null);
-                        setIsStreaming(false);
-                        setIsStreamer(false);
-                        setIsLoading(false);
-                        setIsStartingStream(false);
-                        return; // Exit if offer creation fails
-                    }
                 };
 
 
@@ -1238,7 +1240,8 @@
                 const normalizedActiveChannel = activeChannel.toLowerCase();
 
                 // Get reference to the 'webrtc_data' document
-                const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}`, 'webrtc_data');
+                // FIX: Changed path to include 'webrtc_signaling' collection
+                const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc_signaling`, 'webrtc_data');
                 // Get reference to the 'candidates' subcollection under 'webrtc_data' document
                 const candidatesCollectionRef = window.collection(webrtcDocRef, 'candidates');
 
