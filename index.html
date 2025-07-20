@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v42 (WebRTC Streaming - RTCPeerConnection Debugging)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v44 (WebRTC Streaming - MediaStream Active Fix)");
 
 
         // Helper function to generate a random username for new users
@@ -1027,7 +1027,7 @@
                 };
 
 
-                setPeerConnection(pc);
+                // Removed setPeerConnection(pc) from here. It will be set in startStreaming.
                 return pc;
             }, [activeChannel, db]);
 
@@ -1035,8 +1035,10 @@
             const requestMediaPermissions = React.useCallback(async () => {
                 try {
                     console.log("DEBUG PROFUNDO: Requesting media permissions explicitly...");
+                    // REMOVED: stream.getTracks().forEach(track => track.stop());
                     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                    stream.getTracks().forEach(track => track.stop()); // Stop tracks immediately after getting permissions
+                    // Explicitly stop tracks to release camera/mic after permission check
+                    stream.getTracks().forEach(track => track.stop());
                     showMessage("Camera and microphone permissions granted!", 'success');
                     console.log("DEBUG PROFUNDO: Media permissions successfully granted.");
                 } catch (error) {
@@ -1086,7 +1088,7 @@
 
                 setIsLoading(true);
                 console.log("DEBUG PROFUNDO: startStreaming - isLoading set to true.");
-                let pc; // Declare pc here so it's accessible in finally block
+                let pcInstance; // Use a local variable for the PC instance
                 let stream; // Declare stream here
 
                 try {
@@ -1099,6 +1101,17 @@
                     console.log("DEBUG PROFUNDO: startStreaming - Media devices obtained. Stream object:", stream);
                     console.log("DEBUG PROFUNDO: startStreaming - Stream has video tracks:", stream.getVideoTracks().length > 0);
                     console.log("DEBUG PROFUNDO: startStreaming - Stream has audio tracks:", stream.getAudioTracks().length > 0);
+                    console.log(`DEBUG PROFUNDO: startStreaming - MediaStream active state: ${stream.active}`); // NEW LOG
+
+                    if (!stream.active) { // NEW CHECK
+                        showMessage("Media stream is not active. Check camera/microphone connections and permissions.", 'error');
+                        console.error("DEBUG PROFUNDO: getUserMedia succeeded but stream is not active.");
+                        stream.getTracks().forEach(track => track.stop()); // Ensure tracks are stopped
+                        setLocalStream(null);
+                        setIsLoading(false);
+                        setIsStartingStream(false);
+                        return;
+                    }
 
                     if (stream.getVideoTracks().length === 0 && stream.getAudioTracks().length === 0) {
                         showMessage("No video or audio tracks found in the stream. Check camera/microphone connections and permissions.", 'error');
@@ -1111,28 +1124,37 @@
                     }
 
 
-                    pc = createPeerConnection(currentAuthUserId); // Assign to declared pc
+                    // Initialize peerConnection only if it doesn't exist
+                    if (!peerConnection) {
+                        pcInstance = createPeerConnection(currentAuthUserId); // Assign to local variable
+                        setPeerConnection(pcInstance); // Set the state here
+                        console.log("DEBUG PROFUNDO: startStreaming - New PeerConnection created and set to state.");
+                    } else {
+                        pcInstance = peerConnection; // Use existing peerConnection from state
+                        console.log("DEBUG PROFUNDO: startStreaming - Using existing PeerConnection from state.");
+                    }
+
 
                     // NEW: Add transceivers explicitly before adding tracks
                     // This tells WebRTC what kind of media to expect and can help with offer creation issues
-                    pc.addTransceiver('video', { direction: 'sendrecv' });
-                    pc.addTransceiver('audio', { direction: 'sendrecv' });
+                    pcInstance.addTransceiver('video', { direction: 'sendrecv' });
+                    pcInstance.addTransceiver('audio', { direction: 'sendrecv' });
                     console.log("DEBUG PROFUNDO: startStreaming - Transceivers added to peer connection.");
 
-                    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+                    stream.getTracks().forEach(track => pcInstance.addTrack(track, stream));
                     console.log("DEBUG PROFUNDO: startStreaming - Tracks added to peer connection.");
 
                     // NEW: Log PC states right before offer creation
-                    console.log(`DEBUG PROFUNDO: PeerConnection state BEFORE createOffer - signalingState: ${pc.signalingState}, iceGatheringState: ${pc.iceGatheringState}`);
+                    console.log(`DEBUG PROFUNDO: PeerConnection state BEFORE createOffer - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`);
 
 
                     // NEW: Add try-catch block for offer creation and setting local description
                     try {
                         console.log("DEBUG PROFUNDO: startStreaming - Attempting to create offer.");
-                        const offer = await pc.createOffer();
+                        const offer = await pcInstance.createOffer();
                         console.log("DEBUG PROFUNDO: startStreaming - Offer created:", offer);
-                        await pc.setLocalDescription(offer);
-                        console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pc.localDescription); // NEW LOG
+                        await pcInstance.setLocalDescription(offer);
+                        console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pcInstance.localDescription); // NEW LOG
                     } catch (offerError) {
                         console.error(`DEBUG PROFUNDO: Error creating or setting offer (WebRTC): Name: ${offerError.name}, Message: ${offerError.message}`, offerError);
                         showMessage(`Error al iniciar stream (WebRTC Offer): ${offerError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
@@ -1140,8 +1162,8 @@
                         if (stream) {
                             stream.getTracks().forEach(track => track.stop());
                         }
-                        if (pc) {
-                            pc.close();
+                        if (pcInstance) { // Use local variable
+                            pcInstance.close();
                         }
                         setLocalStream(null);
                         setPeerConnection(null);
@@ -1162,7 +1184,7 @@
                             isStreaming: true,
                             streamerId: currentAuthUserId, // Use currentAuthUserId
                             streamerUserName: userName,
-                            offer: pc.localDescription.toJSON(), // Use localDescription after it's set
+                            offer: pcInstance.localDescription.toJSON(), // Use localDescription after it's set
                             lastActivity: window.serverTimestamp()
                         };
                         console.log("DEBUG PROFUNDO: startStreaming - Preparing to send payload to Firestore:", payload); // NEW LOG
@@ -1190,8 +1212,8 @@
                         if (stream) { // Use declared stream
                             stream.getTracks().forEach(track => track.stop());
                         }
-                        if (pc) { // Use declared pc
-                            pc.close();
+                        if (pcInstance) { // Use local variable
+                            pcInstance.close();
                         }
                         setLocalStream(null);
                         setPeerConnection(null);
@@ -1207,10 +1229,10 @@
                         if (docSnap.exists()) {
                             const data = docSnap.data();
                             // Only process answer if it exists, and we haven't already set it as remote description
-                            if (data.answer && pc.remoteDescription?.type !== 'answer') {
+                            if (data.answer && pcInstance.remoteDescription?.type !== 'answer') { // Use pcInstance
                                 console.log("DEBUG PROFUNDO: Received answer from viewer:", data.answer);
                                 const answer = new RTCSessionDescription(data.answer);
-                                await pc.setRemoteDescription(answer);
+                                await pcInstance.setRemoteDescription(answer); // Use pcInstance
                                 // Clear the answer from Firestore after processing
                                 await window.setDoc(channelDocRef, { answer: window.deleteField() }, { merge: true });
                             }
@@ -1226,7 +1248,7 @@
                             if (change.type === 'added' && change.doc.data().senderId !== currentAuthUserId) { // Compare with currentAuthUserId
                                 const candidate = new RTCIceCandidate(change.doc.data().candidate);
                                 console.log("DEBUG PROFUNDO: Adding remote ICE candidate:", candidate);
-                                await pc.addIceCandidate(candidate);
+                                await pcInstance.addIceCandidate(candidate); // Use pcInstance
                                 // Delete the candidate after adding it
                                 await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, change.doc.id));
                             }
@@ -1235,7 +1257,7 @@
                         console.error("DEBUG PROFUNDO: Error listening for ICE candidates:", error);
                     });
 
-                    setPeerConnection(pc); // Update state with the active PC
+                    // setPeerConnection(pcInstance); // This is now set earlier
                     // Consider storing unsubscribe functions in a ref or state if you need to clean them up explicitly
                     // For simplicity, they will be cleaned up when component unmounts or activeChannel changes
                 } catch (error) {
@@ -1245,8 +1267,8 @@
                     if (stream) {
                         stream.getTracks().forEach(track => track.stop());
                     }
-                    if (pc) {
-                        pc.close();
+                    if (pcInstance) { // Use local variable
+                        pcInstance.close();
                     }
                     setLocalStream(null);
                     setPeerConnection(null);
@@ -1262,7 +1284,7 @@
                         console.log("DEBUG PROFUNDO: isStartingStream set to false after delay.");
                     }, 1000); // 1000ms delay
                 }
-            }, [isAuthReady, db, activeChannel, userName, showMessage, setIsLoading, createPeerConnection, localStream, isStreaming, auth, setIsStartingStream, setIsStreaming, setIsStreamer]);
+            }, [isAuthReady, db, activeChannel, userName, showMessage, setIsLoading, createPeerConnection, localStream, isStreaming, auth, setIsStartingStream, setIsStreaming, setIsStreamer, peerConnection]); // Added peerConnection to dependencies
 
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
@@ -1278,6 +1300,7 @@
 
                 setIsLoading(true);
                 console.log("DEBUG PROFUNDO: startReceivingStream - isLoading set to true.");
+                let pcInstance; // Use a local variable for the PC instance
                 try {
                     const normalizedChannelName = channelName.toLowerCase();
                     const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedChannelName);
@@ -1292,13 +1315,20 @@
                     }
 
                     const offer = new RTCSessionDescription(docSnap.data().offer);
-                    const pc = createPeerConnection(currentAuthUserId); // Pass currentAuthUserId to createPeerConnection
-                    console.log("DEBUG PROFUNDO: startReceivingStream - Peer connection created.");
+                    // Initialize peerConnection only if it doesn't exist
+                    if (!peerConnection) {
+                        pcInstance = createPeerConnection(currentAuthUserId); // Assign to local variable
+                        setPeerConnection(pcInstance); // Set the state here
+                        console.log("DEBUG PROFUNDO: startReceivingStream - New PeerConnection created and set to state.");
+                    } else {
+                        pcInstance = peerConnection; // Use existing peerConnection from state
+                        console.log("DEBUG PROFUNDO: startReceivingStream - Using existing PeerConnection from state.");
+                    }
 
-                    await pc.setRemoteDescription(offer);
+                    await pcInstance.setRemoteDescription(offer); // Use pcInstance
                     console.log("DEBUG PROFUNDO: startReceivingStream - Remote description set.");
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
+                    const answer = await pcInstance.createAnswer(); // Use pcInstance
+                    await pcInstance.setLocalDescription(answer); // Use pcInstance
                     console.log("DEBUG PROFUNDO: startReceivingStream - Answer created and set as local description.");
 
                     // Send answer back to streamer
@@ -1309,7 +1339,7 @@
                     } catch (firestoreError) {
                         console.error("DEBUG PROFUNDO: Firestore Error sending answer to streamer:", firestoreError);
                         showMessage(`Error al unirse al stream: ${firestoreError.message}. Revisa tus reglas de Firestore.`, 'error');
-                        if (pc) { pc.close(); }
+                        if (pcInstance) { pcInstance.close(); } // Use pcInstance
                         setPeerConnection(null);
                         setRemoteStream(null);
                         setIsReceivingStream(false);
@@ -1325,7 +1355,7 @@
                             if (change.type === 'added' && change.doc.data().senderId === streamerId) {
                                 const candidate = new RTCIceCandidate(change.doc.data().candidate);
                                 console.log("DEBUG PROFUNDO: Adding remote ICE candidate:", candidate);
-                                await pc.addIceCandidate(candidate);
+                                await pcInstance.addIceCandidate(candidate); // Use pcInstance
                                 // Delete the candidate after adding it
                                 await window.deleteDoc(window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/iceCandidates`, change.doc.id));
                             }
@@ -1334,14 +1364,14 @@
                         console.error("DEBUG PROFUNDO: Error listening for ICE candidates (viewer):", error);
                     });
 
-                    setPeerConnection(pc);
+                    // setPeerConnection(pcInstance); // This is now set earlier
                     setIsReceivingStream(true);
                     showMessage("Joining stream...", 'success');
                     console.log("DEBUG PROFUNDO: Started receiving stream.");
                 } catch (error) {
                     console.error(`DEBUG PROFUNDO: Error receiving stream (general catch block): Name: ${error.name}, Message: ${error.message}`, error);
                     showMessage(`Error joining stream: ${error.message}`, 'error');
-                    if (peerConnection) {
+                    if (peerConnection) { // Still use state for final cleanup
                         peerConnection.close();
                         setPeerConnection(null);
                     }
