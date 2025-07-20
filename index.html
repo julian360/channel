@@ -1064,7 +1064,7 @@
 
 
               // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-  // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
+// NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
         const startStreaming = React.useCallback(async () => {
             console.log("DEBUG PROFUNDO: startStreaming - Initiated.");
 
@@ -1129,10 +1129,92 @@
                 console.log("DEBUG PROFUNDO: startStreaming - New PeerConnection created and set to state.");
 
 
-                // NEW: Add onnegotiationneeded listener
-                pcInstance.onnegotiationneeded = () => {
+                // NEW: Add onnegotiationneeded listener to handle offer creation
+                pcInstance.onnegotiationneeded = async () => {
                     console.log("DEBUG PROFUNDO: PeerConnection onnegotiationneeded event fired. This indicates a need to create an offer.");
+                    try {
+                        console.log("DEBUG PROFUNDO: Creating WebRTC offer from onnegotiationneeded. Current signalingState:", pcInstance.signalingState);
+                        const offer = await pcInstance.createOffer();
+                        console.log("DEBUG PROFUNDO: Offer created from onnegotiationneeded:", offer);
+
+                        // Specific try-catch for setLocalDescription with a timeout
+                        const setLocalDescriptionPromise = pcInstance.setLocalDescription(offer);
+                        const timeoutPromise = new Promise((resolve, reject) =>
+                            setTimeout(() => reject(new Error('setLocalDescription timed out')), 15000) // Increased timeout to 15 seconds
+                        );
+
+                        try {
+                            console.log("DEBUG PROFUNDO: Attempting to set local description (with timeout) from onnegotiationneeded. Awaiting Promise.race.");
+                            await Promise.race([setLocalDescriptionPromise, timeoutPromise]);
+                            console.log("DEBUG PROFUNDO: Offer set as local description from onnegotiationneeded. Local description object:", pcInstance.localDescription);
+                            console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription from onnegotiationneeded - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`);
+                            showMessage("Local description set successfully!", 'success');
+
+                            // Save offer to Firestore (This block is moved inside the successful try-catch for setLocalDescription)
+                            const offerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'offer');
+                            await window.setDoc(offerRef, {
+                                sdp: pcInstance.localDescription.sdp, // Use localDescription after it's set
+                                type: pcInstance.localDescription.type, // Use localDescription after it's set
+                                senderId: currentAuthUserId,
+                                senderUserName: userName,
+                                timestamp: window.serverTimestamp()
+                            });
+                            console.log("DEBUG PROFUNDO: WebRTC offer saved to Firestore from onnegotiationneeded:", pcInstance.localDescription.toJSON());
+
+                            // Update channel status in Firestore to indicate streaming
+                            const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+                            await window.setDoc(channelDocRef, {
+                                isStreaming: true,
+                                streamerId: currentAuthUserId,
+                                streamerUserName: userName,
+                                lastActivity: window.serverTimestamp()
+                            }, { merge: true });
+                            console.log("DEBUG PROFUNDO: Channel status updated in Firestore: isStreaming=true.");
+
+                            setIsStreaming(true);
+                            setIsStreamer(true); // Mark current user as streamer
+                            showMessage("Stream iniciado correctamente!", 'success');
+                            console.log("DEBUG PROFUNDO: Stream started successfully. isStreaming=true, isStreamer=true.");
+
+                        } catch (setLocalDescError) {
+                            console.error(`DEBUG PROFUNDO: Error setting local description (WebRTC) from onnegotiationneeded: Name: ${setLocalDescError.name}, Message: ${setLocalDescError.message}`, setLocalDescError);
+                            showMessage(`Error al establecer la descripción local del stream: ${setLocalDescError.message}.`, 'error');
+                            // Clean up WebRTC resources on error
+                            if (stream) {
+                                stream.getTracks().forEach(track => track.stop());
+                            }
+                            if (pcInstance) {
+                                pcInstance.close();
+                            }
+                            setLocalStream(null);
+                            setPeerConnection(null);
+                            setIsStreaming(false);
+                            setIsStreamer(false);
+                            setIsLoading(false);
+                            setIsStartingStream(false);
+                            return; // Exit if setLocalDescription fails
+                        }
+
+                    } catch (createOfferError) {
+                        console.error(`DEBUG PROFUNDO: Error creating offer (WebRTC) from onnegotiationneeded: Name: ${createOfferError.name}, Message: ${createOfferError.message}`, createOfferError);
+                        showMessage(`Error al iniciar stream (WebRTC Offer): ${createOfferError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
+                        // Clean up WebRTC resources on error
+                        if (stream) {
+                            stream.getTracks().forEach(track => track.stop());
+                        }
+                        if (pcInstance) {
+                            pcInstance.close();
+                        }
+                        setLocalStream(null);
+                        setPeerConnection(null);
+                        setIsStreaming(false);
+                        setIsStreamer(false);
+                        setIsLoading(false);
+                        setIsStartingStream(false);
+                        return; // Exit if offer creation fails
+                    }
                 };
+
 
                 // Add onicegatheringstatechange listener immediately after PC creation
                 pcInstance.onicegatheringstatechange = () => {
@@ -1171,68 +1253,6 @@
                         console.log("DEBUG PROFUNDO: Remote stream attached to video element.");
                     }
                 };
-
-                // Create and set offer
-                console.log("DEBUG PROFUNDO: Creating WebRTC offer. Current signalingState:", pcInstance.signalingState); // NEW LOG
-                const offer = await pcInstance.createOffer();
-                console.log("DEBUG PROFUNDO: Offer created:", offer);
-
-                // Specific try-catch for setLocalDescription with a timeout
-                const setLocalDescriptionPromise = pcInstance.setLocalDescription(offer);
-                const timeoutPromise = new Promise((resolve, reject) =>
-                    setTimeout(() => reject(new Error('setLocalDescription timed out')), 15000) // Increased timeout to 15 seconds
-                );
-
-                try {
-                    console.log("DEBUG PROFUNDO: Attempting to set local description (with timeout). Awaiting Promise.race."); // NEW LOG
-                    await Promise.race([setLocalDescriptionPromise, timeoutPromise]);
-                    console.log("DEBUG PROFUNDO: Offer set as local description. Local description object:", pcInstance.localDescription);
-                    console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`);
-                    showMessage("Local description set successfully!", 'success');
-                } catch (setLocalDescError) {
-                    console.error(`DEBUG PROFUNDO: Error setting local description (WebRTC): Name: ${setLocalDescError.name}, Message: ${setLocalDescError.message}`, setLocalDescError);
-                    showMessage(`Error al establecer la descripción local del stream: ${setLocalDescError.message}.`, 'error');
-                    // Clean up WebRTC resources on error
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
-                    if (pcInstance) {
-                        pcInstance.close();
-                    }
-                    setLocalStream(null);
-                    setPeerConnection(null);
-                    setIsStreaming(false);
-                    setIsStreamer(false);
-                    setIsLoading(false);
-                    setIsStartingStream(false);
-                    return; // Exit if setLocalDescription fails
-                }
-
-                // Save offer to Firestore (This block is moved inside the successful try-catch for setLocalDescription)
-                const offerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'offer');
-                await window.setDoc(offerRef, {
-                    sdp: pcInstance.localDescription.sdp, // Use localDescription after it's set
-                    type: pcInstance.localDescription.type, // Use localDescription after it's set
-                    senderId: currentAuthUserId,
-                    senderUserName: userName,
-                    timestamp: window.serverTimestamp()
-                });
-                console.log("DEBUG PROFUNDO: WebRTC offer saved to Firestore:", pcInstance.localDescription.toJSON());
-
-                // Update channel status in Firestore to indicate streaming
-                const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
-                await window.setDoc(channelDocRef, {
-                    isStreaming: true,
-                    streamerId: currentAuthUserId,
-                    streamerUserName: userName,
-                    lastActivity: window.serverTimestamp()
-                }, { merge: true });
-                console.log("DEBUG PROFUNDO: Channel status updated in Firestore: isStreaming=true.");
-
-                setIsStreaming(true);
-                setIsStreamer(true); // Mark current user as streamer
-                showMessage("Stream iniciado correctamente!", 'success');
-                console.log("DEBUG PROFUNDO: Stream started successfully. isStreaming=true, isStreamer=true.");
 
                 // Listen for answers from viewers
                 const answerRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/webrtc`, 'answer');
@@ -1325,6 +1345,7 @@
                 console.log("DEBUG PROFUNDO: startStreaming - Finally block executed. isStartingStream set to false. isLoading set to false.");
             }
         }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, peerConnection, activeChannel, auth]);
+
 
             const startReceivingStream = React.useCallback(async (channelName, streamerId) => {
                 console.log("DEBUG PROFUNDO: startReceivingStream - Initiated for channel:", channelName, "from streamer:", streamerId);
