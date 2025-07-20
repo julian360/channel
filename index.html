@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v51 (WebRTC Streaming - setLocalDescription Timeout & State Check)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v52 (WebRTC Streaming - setLocalDescription Timeout Detection)");
 
 
         // Helper function to generate a random username for new users
@@ -1150,10 +1150,15 @@
                         const offer = await pcInstance.createOffer();
                         console.log("DEBUG PROFUNDO: startStreaming - Offer created:", offer);
                         
-                        // NEW: Specific try-catch for setLocalDescription
+                        // NEW: Specific try-catch for setLocalDescription with a timeout
+                        const setLocalDescriptionPromise = pcInstance.setLocalDescription(offer);
+                        const timeoutPromise = new Promise((resolve, reject) =>
+                            setTimeout(() => reject(new Error('setLocalDescription timed out')), 5000) // 5 seconds timeout
+                        );
+
                         try {
-                            console.log("DEBUG PROFUNDO: startStreaming - Attempting to set local description.");
-                            await pcInstance.setLocalDescription(offer);
+                            console.log("DEBUG PROFUNDO: startStreaming - Attempting to set local description (with timeout).");
+                            await Promise.race([setLocalDescriptionPromise, timeoutPromise]);
                             console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description. Local description object:", pcInstance.localDescription); // NEW LOG
                             console.log(`DEBUG PROFUNDO: PeerConnection state AFTER setLocalDescription - signalingState: ${pcInstance.signalingState}, iceGatheringState: ${pcInstance.iceGatheringState}`); // NEW LOG
                             showMessage("Local description set successfully!", 'success'); // NEW LOG
