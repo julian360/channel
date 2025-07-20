@@ -105,7 +105,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v33 (WebRTC Streaming - Add Transceivers)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v34 (WebRTC Streaming - Enhanced Error Logging)");
 
 
         // Helper function to generate a random username for new users
@@ -1042,6 +1042,15 @@
                     return;
                 }
 
+                // NEW: Check for mediaDevices availability
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    showMessage("Your browser does not support media devices (camera/microphone) or they are not accessible.", 'error');
+                    console.error("DEBUG PROFUNDO: navigator.mediaDevices.getUserMedia is not supported or accessible.");
+                    setIsLoading(false);
+                    setIsStartingStream(false);
+                    return;
+                }
+
                 setIsLoading(true);
                 console.log("DEBUG PROFUNDO: startStreaming - isLoading set to true.");
                 let pc; // Declare pc here so it's accessible in finally block
@@ -1081,8 +1090,8 @@
                         await pc.setLocalDescription(offer);
                         console.log("DEBUG PROFUNDO: startStreaming - Offer set as local description.");
                     } catch (offerError) {
-                        console.error("DEBUG PROFUNDO: Error creating or setting offer (WebRTC):", offerError);
-                        showMessage(`Error al iniciar stream (WebRTC Offer): ${offerError.message}`, 'error');
+                        console.error(`DEBUG PROFUNDO: Error creating or setting offer (WebRTC): Name: ${offerError.name}, Message: ${offerError.message}`, offerError);
+                        showMessage(`Error al iniciar stream (WebRTC Offer): ${offerError.message}. Por favor, verifica los permisos de cámara/micrófono.`, 'error');
                         // Clean up WebRTC resources on error
                         if (stream) {
                             stream.getTracks().forEach(track => track.stop());
