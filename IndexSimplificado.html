@@ -8,23 +8,41 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Carga Babel Standalone para transpilación de JSX en el navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <link rel="manifest" href="/channel/manifest.json">
     <link rel="apple-touch-icon" href="/channel/icons/icon-192x192.png">
     <meta name="theme-color" content="#2563eb">
 
-      <!-- Firebase Initialization (still needs to be global or passed) -->
-    <script type="module" src="/channel/firebase-init.js"></script>
-    <!-- Your main React App component -->
-    <script type="module" src="/channel/App.js"></script>
+    <!-- Carga el archivo de inicialización de Firebase como un módulo estándar.
+         Este script expone las funciones de Firebase al objeto 'window'. -->
+    <script type="module" src="./firebase-init.js"></script>
+
+    <!-- Carga los archivos de utilidades, componentes y hooks.
+         Deben cargarse ANTES de App.js porque App.js los usará desde el ámbito global (window).
+         Estos scripts NO deben tener type="module" ni type="text/babel" ya que no usan sintaxis de módulo y su JSX ya fue convertido. -->
+
+    <!-- Utils -->
+    <script src="./utils/helpers.js"></script>
+
+    <!-- Components -->
+    <script src="./components/MessageDisplay.js"></script>
+    <script src="./components/LoadingSpinner.js"></script>
+    <script src="./components/ChannelList.js"></script>
+
+    <!-- Hooks -->
+    <script src="./hooks/useAuthAndFirestore.js"></script>
+    <script src="./hooks/useChannelManagement.js"></script>
+    <script src="./hooks/useWebRTC.js"></script>
 
     <style>
-        /* Basic style for the body to apply the Inter font */
+        /* Estilos básicos para el cuerpo y la fuente Inter */
         body {
             font-family: 'Inter', sans-serif;
         }
 
-        /* Spinner styles */
+        /* Estilos del spinner de carga */
         .spinner {
             border: 4px solid rgba(255, 255, 255, 0.3);
             border-top: 4px solid #fff;
@@ -39,14 +57,988 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Style added for the back button to ensure it is clickable */
+        /* Estilo para el botón de retroceso para asegurar que sea clicable */
         .back-button-z-index {
-            z-index: 60 !important; /* Higher than the spinner z-index (50) */
-            position: relative; /* Ensures z-index is applied */
+            z-index: 60 !important; /* Más alto que el z-index del spinner (50) */
+            position: relative; /* Asegura que se aplique el z-index */
         }
     </style>
 </head>
 <body>
     <div id="root"></div>
+
+    <!-- El componente principal App.js se mantiene inline y usa type="text/babel" -->
+    <script type="text/babel">
+        // Debug message to verify code version
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-21-Globalized-Modules-Fixed-Final");
+
+        // Componente principal de la aplicación.
+        const App = () => {
+            // Estado para gestionar la vista actual: 'home', 'channel' o 'explore'
+            const [currentPage, setCurrentPage] = React.useState('home');
+            // Estado para almacenar el nombre del canal introducido por el usuario
+            const [channelName, setChannelName] = React.useState('');
+            // Estado para almacenar el nombre del canal activo al ver un canal
+            const [activeChannel, setActiveChannel] = React.useState(null);
+            // Estado para almacenar una lista de canales disponibles para la página de exploración
+            const [availableChannels, setAvailableChannels] = React.useState([]);
+            // Estado para almacenar el nombre de usuario elegido por el usuario
+            const [userName, setUserName] = React.useState('');
+            // Estado para rastrear si el nombre de usuario ha sido confirmado
+            const [userNameConfirmed, setUserNameConfirmed] = React.useState(false);
+            // Estado para mostrar mensajes al usuario
+            const [message, setMessage] = React.useState(null);
+            const [messageType, setMessageType] = React.useState('');
+
+            // Estado para el mensaje actual que se está escribiendo
+            const [currentMessage, setCurrentMessage] = React.useState('');
+            // Estado para los mensajes del chat
+            const [chatMessages, setChatMessages] = React.useState([]);
+
+            // Estados relacionados con Firebase (ahora se obtienen de window)
+            const [db, setDb] = React.useState(null);
+            const [auth, setAuth] = React.useState(null);
+            const [userId, setUserId] = React.useState(null);
+            const [isAuthReady, setIsAuthReady] = React.useState(false);
+            // Estado para el estado de carga general
+            const [isLoading, setIsLoading] = React.useState(true);
+
+            // Estado para la visibilidad del menú de opciones (para la página del canal)
+            const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
+            // Estado para la visibilidad del panel de actividad (lista de usuarios)
+            const [showActivityPanel, setShowActivityPanel] = React.useState(false);
+            // Estado para almacenar los miembros del canal (histórico)
+            const [channelMembers, setChannelMembers] = React.useState([]);
+
+            // Estados de WebRTC (gestionados por useWebRTC)
+            // Estos estados se pasan como props a useWebRTC para que el hook pueda actualizarlos
+            // y App.js pueda reaccionar a sus cambios.
+            const [localStream, setLocalStream] = React.useState(null);
+            const [remoteStream, setRemoteStream] = React.useState(null);
+            const [isStreaming, setIsStreaming] = React.useState(false);
+            const [isReceivingStream, setIsReceivingStream] = React.useState(false);
+            const [isStreamer, setIsStreamer] = React.useState(false);
+            const [isStartingStream, setIsStartingStream] = React.useState(false);
+
+
+            // PWA: Estado para el evento beforeinstallprompt
+            const [deferredPrompt, setDeferredPrompt] = React.useState(null);
+            // PWA: Estado para saber si la PWA ya está instalada
+            const [isPwaInstalled, setIsPwaInstalled] = React.useState(false);
+
+            // Estados para el modo Tigre
+            const [showTigreCodeInput, setShowTigreCodeInput] = React.useState(false);
+            const [tigreCode, setTigreCode] = React.useState('');
+            const [isTigre, setIsTigre] = React.useState(false);
+
+            // Ref para el campo de entrada del nombre del canal
+            const channelInputRef = React.useRef(null);
+            // Ref para el div de mensajes del chat para habilitar el desplazamiento automático
+            const chatMessagesEndRef = React.useRef(null);
+            // Ref para el botón del menú de opciones para manejar clics externos (para la página del canal)
+            const optionsMenuRef = React.useRef(null);
+            // Ref para el menú de la página de exploración
+            const exploreMenuRef = React.useRef(null);
+            // Ref para la entrada de archivo oculta
+            const fileInputRef = React.useRef(null);
+            // Refs para elementos de video local y remoto
+            const localVideoRef = React.useRef(null);
+            const remoteVideoRef = React.useRef(null);
+            // Ref para la instancia de PeerConnection
+            const peerConnectionRef = React.useRef(null);
+
+            // Estado para la opción de ordenación en la página de exploración
+            const [sortOption, setSortOption] = React.useState('activity');
+            // Estado para controlar la visibilidad del menú de exploración
+            const [showExploreMenu, setShowExploreMenu] = React.useState(false);
+            // Estado para la consulta de búsqueda en la página de exploración
+            const [searchQuery, setSearchQuery] = React.useState('');
+            // Estado para controlar la visibilidad del campo de búsqueda
+            const [showSearchInput, setShowSearchInput] = React.useState(false);
+            // Ref para la entrada de búsqueda
+            const searchInputRef = React.useRef(null);
+
+
+            // Función para mostrar un mensaje
+            const showMessage = React.useCallback((msg, type = 'success') => {
+                setMessage(msg);
+                setMessageType(type);
+                setTimeout(() => setMessage(null), 3000);
+            }, []);
+
+            // Función para desplazarse al final de los mensajes del chat
+            const scrollToBottom = React.useCallback(() => {
+                chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, []);
+
+            // PWA: Maneja el evento beforeinstallprompt
+            React.useEffect(() => {
+                const handler = (e) => {
+                    e.preventDefault();
+                    setDeferredPrompt(e);
+                    console.log('Evento beforeinstallprompt disparado!');
+                };
+                window.addEventListener('beforeinstallprompt', handler);
+
+                if (window.matchMedia('(display-mode: standalone)').matches) {
+                    setIsPwaInstalled(true);
+                }
+
+                return () => window.removeEventListener('beforeinstallprompt', handler);
+            }, []);
+
+            // PWA: Maneja el evento appinstalled (cuando el usuario instala la PWA)
+            React.useEffect(() => {
+                const handleAppInstalled = () => {
+                    setIsPwaInstalled(true);
+                    setDeferredPrompt(null);
+                    showMessage('Instalando CHANNEL App...', 'success');
+                    console.log('PWA instalado');
+                };
+                window.addEventListener('appinstalled', handleAppInstalled);
+                return () => window.removeEventListener('appinstalled', handleAppInstalled);
+            }, [showMessage]);
+
+            // Efectos de depuración para isLoading y currentPage
+            React.useEffect(() => {
+                console.log(`DEBUG PROFUNDO: isLoading cambió a: ${isLoading}`);
+            }, [isLoading]);
+
+            React.useEffect(() => {
+                console.log(`DEBUG PROFUNDO: currentPage cambió a: ${currentPage}`);
+            }, [currentPage]);
+
+            React.useEffect(() => {
+                console.log(`DEBUG PROFUNDO: isStartingStream cambió a: ${isStartingStream}`);
+            }, [isStartingStream]);
+
+            // 1. Configuración inicial de Firebase y establecimiento de estados db/auth
+            React.useEffect(() => {
+                // Establece db y auth desde window después de la inicialización global
+                setDb(window.db);
+                setAuth(window.auth);
+                console.log("DEBUG PROFUNDO: Firebase db y auth establecidos en el estado de React.");
+            }, []);
+
+            // 2. Listener de autenticación de Firebase y carga del perfil de usuario (depende de que 'auth' esté configurado)
+            React.useEffect(() => {
+                if (!auth || !db) {
+                    console.log("DEBUG PROFUNDO: Auth o DB aún no disponibles para la configuración del listener. Saltando.");
+                    return;
+                }
+
+                console.log("DEBUG PROFUNDO: Configurando el listener onAuthStateChanged.");
+                const unsubscribeAuth = window.onAuthStateChanged(auth, async (user) => {
+                    let currentUserId = null;
+                    if (user) {
+                        currentUserId = user.uid;
+                        setUserId(currentUserId);
+                        console.log("DEBUG PROFUNDO: onAuthStateChanged - userId establecido:", currentUserId);
+                    } else {
+                        console.log("DEBUG PROFUNDO: onAuthStateChanged - Usuario no autenticado, intentando signInAnonymously si es necesario.");
+                        try {
+                            const userCredential = await window.signInAnonymously(auth);
+                            currentUserId = userCredential.user.uid;
+                            setUserId(currentUserId);
+                            console.log("DEBUG PROFUNDO: onAuthStateChanged - userId ANÓNIMO establecido después del inicio de sesión:", currentUserId);
+                        } catch (anonError) {
+                            console.error("DEBUG PROFUNDO: Error durante el inicio de sesión anónimo en onAuthStateChanged:", anonError);
+                            currentUserId = (Math.random().toString(36).substring(2) + Date.now().toString(36));
+                            setUserId(currentUserId);
+                            showMessage("No se pudo autenticar al usuario. Usando ID de respaldo. Algunas funciones podrían estar limitadas.", 'error');
+                            console.log("DEBUG PROFUNDO: onAuthStateChanged - userId de respaldo establecido debido a un error de inicio de sesión:", currentUserId);
+                        }
+                    }
+
+                    if (currentUserId && db) {
+                        const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${currentUserId}/profile`, 'userProfile');
+                        try {
+                            console.log("DEBUG PROFUNDO: Intentando leer/crear el perfil de usuario en la ruta:", userProfileRef.path);
+                            const userProfileSnap = await window.getDoc(userProfileRef);
+
+                            let profileData;
+                            if (userProfileSnap.exists()) {
+                                profileData = userProfileSnap.data();
+                                console.log(`DEBUG PROFUNDO: Perfil de usuario cargado para ${currentUserId}.`);
+                            } else {
+                                const userNameToUse = window.generateRandomUserName(); // Usa window.generateRandomUserName
+                                profileData = {
+                                    userName: userNameToUse,
+                                    isTigreActive: false
+                                };
+                                await window.setDoc(userProfileRef, profileData);
+                                console.log(`DEBUG PROFUNDO: Perfil de usuario creado para ${currentUserId}.`);
+                            }
+
+                            setUserName(profileData.userName);
+                            setUserNameConfirmed(true);
+                            setIsTigre(profileData.isTigreActive === true);
+
+                        } catch (profileError) {
+                            console.error("DEBUG PROFUNDO: Error cargando/creando el perfil de usuario desde Firestore (dentro de onAuthStateChanged):", profileError);
+                            setIsTigre(false);
+                            setShowTigreCodeInput(false);
+                            showMessage("Error cargando tu perfil de usuario. Revisa la consola.", 'error');
+                        }
+                    } else {
+                        setIsTigre(false);
+                        setShowTigreCodeInput(false);
+                        console.log("DEBUG PROFUNDO: No hay userId o db disponibles para cargar el perfil. isTigre establecido en falso.");
+                    }
+                    setIsAuthReady(true);
+                    setIsLoading(false);
+                    console.log("DEBUG PROFUNDO: isAuthReady establecido en true.");
+                });
+
+                return () => unsubscribeAuth();
+            }, [auth, db, showMessage]);
+
+            React.useEffect(() => {
+                const handlePopState = (event) => {
+                    if (event.state && event.state.page) {
+                        setCurrentPage(event.state.page);
+                        if (event.state.page !== 'channel') {
+                            console.log("DEBUG PROFUNDO: handlePopState - Navegando fuera del canal. Iniciando limpieza del stream.");
+                            window.stopStreaming(localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef); // Llama a la función global
+                        }
+                    } else {
+                        setCurrentPage('home');
+                        console.log("DEBUG PROFUNDO: handlePopState - Navegando a inicio. Iniciando limpieza del stream.");
+                        window.stopStreaming(localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef); // Llama a la función global
+                        }
+                };
+
+                window.addEventListener('popstate', handlePopState);
+                window.history.pushState({ page: currentPage }, document.title, null);
+                return () => {
+                    window.removeEventListener('popstate', handlePopState);
+                };
+            }, [currentPage, localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef]); // stopStreaming ya no es una dependencia aquí, se llama a la función global
+
+            React.useEffect(() => {
+                if (currentPage && (!window.history.state || window.history.state.page !== currentPage)) {
+                    window.history.pushState({ page: currentPage }, document.title, null);
+                }
+            }, [currentPage]);
+
+            React.useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target)) {
+                        setShowOptionsMenu(false);
+                        setShowActivityPanel(false);
+                    }
+                    if (exploreMenuRef.current && !exploreMenuRef.current.contains(event.target)) {
+                        setShowExploreMenu(false);
+                    }
+                };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => {
+                    document.removeEventListener("mousedown", handleClickOutside);
+                };
+            }, [optionsMenuRef, exploreMenuRef]);
+
+            const fetchChannels = React.useCallback(async () => {
+                if (!isAuthReady || !db) {
+                    console.log("DEBUG PROFUNDO: fetchChannels - Firebase no listo o db es nulo. Saliendo.");
+                    return;
+                }
+                setIsLoading(true);
+                console.log("DEBUG PROFUNDO: fetchChannels - Objeto db actual:", db);
+                console.log("DEBUG PROFUNDO: fetchChannels - auth.currentUser actual:", auth.currentUser);
+                console.log("DEBUG PROFUNDO: fetchChannels - Usando __app_id:", window.__app_id);
+                const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
+                console.log("DEBUG PROFUNDO: fetchChannels - Intentando obtener canales de la ruta:", channelsColRef.path, "con userId:", userId);
+                const q = window.query(channelsColRef);
+
+                try {
+                    const snapshot = await window.getDocs(q);
+                    const channelsData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        name: doc.data().displayName || doc.id,
+                        createdAt: doc.data().createdAt,
+                        createdBy: doc.data().createdBy,
+                        creatorUserName: doc.data().creatorUserName,
+                        lastActivity: doc.data().lastActivity,
+                        isStreaming: doc.data().isStreaming || false
+                    }));
+
+                    let processedChannels = [...channelsData];
+
+                    if (sortOption === 'activity') {
+                        processedChannels.sort((a, b) => {
+                            const dateA = a.lastActivity ? a.lastActivity.toDate() : new Date(a.createdAt);
+                            const dateB = b.lastActivity ? b.lastActivity.toDate() : new Date(b.createdAt);
+                            return dateB.getTime() - dateA.getTime();
+                        });
+                    } else if (sortOption === 'recent') {
+                        processedChannels.sort((a, b) => {
+                            const dateA = new Date(a.createdAt);
+                            const dateB = new Date(b.createdAt);
+                            return dateB.getTime() - dateA.getTime();
+                        });
+                    }
+
+                    if (searchQuery) {
+                        processedChannels = processedChannels.filter(channel =>
+                            channel.name.toLowerCase().includes(searchQuery.toLowerCase())
+                        );
+                    }
+
+                    setAvailableChannels(processedChannels);
+                    console.log("DEBUG PROFUNDO: Canales obtenidos y procesados:", processedChannels);
+                } catch (error) {
+                    console.error("DEBUG PROFUNDO: Error obteniendo canales:", error);
+                    if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                        showMessage("Error de conexión o permisos. Asegúrate de que tus reglas de Firestore sean correctas y tengas conexión a internet.", 'error');
+                    } else {
+                        showMessage("Error cargando canales. Revisa la consola.", 'error');
+                    }
+                    setIsLoading(false);
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [isAuthReady, db, auth, sortOption, searchQuery, showMessage, setIsLoading, setAvailableChannels, userId]);
+
+            React.useEffect(() => {
+                let intervalId;
+                if (currentPage === 'explore') {
+                    fetchChannels();
+                    intervalId = setInterval(fetchChannels, 60000);
+                }
+
+                return () => {
+                    if (intervalId) {
+                        clearInterval(intervalId);
+                    }
+                };
+            }, [currentPage, fetchChannels]);
+
+            React.useEffect(() => {
+                if (showSearchInput && searchInputRef.current) {
+                    searchInputRef.current.focus();
+                }
+            }, [showSearchInput]);
+
+            // Efecto principal para listeners de datos del canal en Firestore.
+            React.useEffect(() => {
+                console.log("DEBUG PROFUNDO: Efecto principal del Canal re-ejecutándose. Dependencias:", { isAuthReady, db, activeChannel, currentPage, userId, isReceivingStream, localStream, isStreaming, isStartingStream, isStreamer });
+
+                if (isAuthReady && db && activeChannel && currentPage === 'channel') {
+                    const normalizedActiveChannel = activeChannel.name.toLowerCase();
+                    const messagesColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/messages`);
+                    const q = window.query(messagesColRef, window.orderBy('timestamp'));
+
+                    const unsubscribe = window.onSnapshot(q, (snapshot) => {
+                        const messagesData = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setChatMessages(messagesData);
+                        scrollToBottom();
+                        console.log("DEBUG PROFUNDO: Mensajes de chat actualizados:", messagesData);
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error obteniendo mensajes de chat:", error);
+                        if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                            showMessage("Error de conexión o permisos al cargar mensajes. Revisa las reglas de Firestore.", 'error');
+                        } else {
+                            showMessage("Error cargando mensajes de chat. Revisa la consola.", 'error');
+                        }
+                    });
+
+                    const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedActiveChannel}/members`);
+                    const unsubscribeMembers = window.onSnapshot(membersColRef, (snapshot) => {
+                        const membersData = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setChannelMembers(membersData);
+                        console.log("DEBUG PROFUNDO: Miembros del canal actualizados:", membersData);
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error obteniendo miembros del canal:", error);
+                    });
+
+                    const channelDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels`, normalizedActiveChannel);
+                    const unsubscribeChannelStatus = window.onSnapshot(channelDocRef, async (docSnap) => {
+                        if (docSnap.exists()) {
+                            const channelData = docSnap.data();
+                            const currentStreamerIdInFirestore = channelData.streamerId;
+                            const isChannelStreamingInFirestore = channelData.isStreaming || false;
+
+                            console.log("DEBUG PROFUNDO: onSnapshot - Datos del canal de Firestore:", channelData);
+                            console.log("DEBUG PROFUNDO: onSnapshot - Estado de streaming del canal en Firestore:", isChannelStreamingInFirestore, "ID del Streamer en Firestore:", currentStreamerIdInFirestore, "ID de Usuario Actual:", userId);
+                            console.log("DEBUG PROFUNDO: onSnapshot - isStreaming local:", isStreaming, "isReceivingStream local:", isReceivingStream, "isStreamer local:", isStreamer);
+
+                            if (isChannelStreamingInFirestore && currentStreamerIdInFirestore && currentStreamerIdInFirestore !== userId && !isReceivingStream) {
+                                if (!isStartingStream) {
+                                    showMessage(`Stream activo en este canal por ${channelData.streamerUserName || 'alguien'}. Uniéndote como espectador...`, 'info');
+                                    console.log("DEBUG PROFUNDO: Intentando unirse al stream como espectador.");
+                                    window.receiveStream(normalizedActiveChannel, currentStreamerIdInFirestore, userId, userName, showMessage, setIsLoading, peerConnectionRef, remoteVideoRef, setRemoteStream, setIsReceivingStream, isStartingStream, isStreaming); // Llama a la función global
+                                } else {
+                                    console.log("DEBUG PROFUNDO: onSnapshot - isStartingStream es true. Ignorando la unión del espectador para evitar condiciones de carrera durante la configuración del streamer.");
+                                }
+                            } else if (!isChannelStreamingInFirestore && currentStreamerIdInFirestore !== userId && isReceivingStream) {
+                                showMessage("El stream ha terminado.", 'info');
+                                console.log("DEBUG PROFUNDO: Stream terminado (lado del espectador).");
+                                setTimeout(() => window.stopReceivingStream(remoteStream, remoteVideoRef, peerConnectionRef, setIsLoading, setRemoteStream, setIsReceivingStream), 500); // Llama a la función global
+                            } else if (isStreaming && isStreamer && (!isChannelStreamingInFirestore || currentStreamerIdInFirestore !== userId)) {
+                                if (!isStartingStream) {
+                                    console.warn("DEBUG PROFUNDO: El estado local del streamer está activo, pero Firestore muestra inactivo o un streamer diferente. Forzando la detención del stream local.");
+                                    console.trace("DEBUG PROFUNDO: Pila de llamadas para la detención forzada del stream (lado del streamer).");
+                                    showMessage("Tu stream ha terminado o ha sido desconectado (detectado por Firestore).", 'info');
+                                    setTimeout(() => window.stopStreaming(localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef), 500); // Llama a la función global
+                                } else {
+                                    console.log("DEBUG PROFUNDO: onSnapshot - El streamer está iniciando el stream. Ignorando la desincronización temporal del estado de Firestore.");
+                                }
+                            }
+                        }
+                    }, (error) => {
+                        console.error("DEBUG PROFUNDO: Error obteniendo el estado de streaming del canal:", error);
+                        if (isStreaming || isReceivingStream) {
+                            showMessage("Error al obtener el estado del stream. Deteniendo el stream.", 'error');
+                            setTimeout(() => window.stopStreaming(localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef), 500); // Llama a la función global
+                        }
+                    });
+
+                    return () => {
+                        unsubscribe();
+                        unsubscribeMembers();
+                        unsubscribeChannelStatus();
+                        setChatMessages([]);
+                        setChannelMembers([]);
+                        console.log("DEBUG PROFUNDO: Limpiando estados de mensajes y miembros del canal.");
+                    };
+                } else {
+                    setChatMessages([]);
+                    setChannelMembers([]);
+                    console.log("DEBUG PROFUNDO: Limpiando estados de mensajes y miembros del canal (sin canal activo).");
+                }
+            }, [isAuthReady, db, activeChannel, currentPage, showMessage, scrollToBottom, userId, isReceivingStream, localStream, isStreaming, isStartingStream, isStreamer, remoteStream, userName, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsReceivingStream, setIsStreamer, peerConnectionRef, remoteVideoRef]);
+
+            // Efecto dedicado para la limpieza del stream WebRTC.
+            React.useEffect(() => {
+                if (!activeChannel || currentPage !== 'channel') {
+                    if (isStreaming || isReceivingStream) {
+                        console.log("DEBUG PROFUNDO: useEffect de limpieza de WebRTC disparado: Deteniendo stream activo debido a salida del canal o cambio de página.");
+                        window.stopStreaming(localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef); // Llama a la función global
+                    }
+                }
+            }, [activeChannel, currentPage, isStreaming, isReceivingStream, localStream, remoteStream, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef]);
+
+
+            const handleConfirmUserName = React.useCallback(async () => {
+                console.log("DEBUG PROFUNDO: handleConfirmUserName - Iniciado.");
+                // Pasa los estados y setters necesarios a la función global
+                window.useAuthAndFirestore(showMessage).handleConfirmUserName(
+                    userName,
+                    isAuthReady,
+                    db,
+                    userId,
+                    setUserNameConfirmed,
+                    setIsLoading,
+                    setIsTigre,
+                    setShowTigreCodeInput
+                );
+            }, [userName, isAuthReady, db, userId, showMessage, setUserNameConfirmed, setIsLoading, setIsTigre, setShowTigreCodeInput]);
+
+            const handleTigreCodeSubmit = React.useCallback(async () => {
+                // Pasa los estados y setters necesarios a la función global
+                window.useAuthAndFirestore(showMessage).handleTigreCodeSubmit(
+                    tigreCode,
+                    db,
+                    userId,
+                    setIsTigre,
+                    setShowTigreCodeInput
+                );
+                setTigreCode(''); // Limpia el input del código Tigre en App.js
+            }, [tigreCode, db, userId, showMessage, setIsTigre, setShowTigreCodeInput]);
+
+
+            const handleCreateChannel = React.useCallback(async () => {
+                // Pasa los estados y setters necesarios a la función global
+                window.useChannelManagement(userId, userName, isAuthReady, isTigre, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels).handleCreateChannel(
+                    channelName,
+                    channelInputRef
+                );
+            }, [channelName, userName, isAuthReady, isTigre, userId, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels]);
+
+            const handleJoinChannelFromExplore = React.useCallback(async (channelToJoin) => {
+                // Pasa los estados y setters necesarios a la función global
+                window.useChannelManagement(userId, userName, isAuthReady, isTigre, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels).handleJoinChannelFromExplore(
+                    channelToJoin
+                );
+            }, [userName, isAuthReady, isTigre, userId, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels]);
+
+            const handleSendMessage = React.useCallback(async () => {
+                // Pasa los estados y setters necesarios a la función global
+                window.useChannelManagement(userId, userName, isAuthReady, isTigre, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels).handleSendMessage(
+                    currentMessage,
+                    activeChannel,
+                    chatMessagesEndRef,
+                    setCurrentMessage,
+                    scrollToBottom,
+                    userId,
+                    userName,
+                    isAuthReady
+                );
+            }, [currentMessage, userName, activeChannel, isAuthReady, userId, showMessage, scrollToBottom]);
+
+            const handleDeleteChannel = React.useCallback(async (channelDisplayName) => {
+                // Pasa los estados y setters necesarios a la función global
+                window.useChannelManagement(userId, userName, isAuthReady, isTigre, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels).handleDeleteChannel(
+                    channelDisplayName,
+                    userId,
+                    isTigre,
+                    isAuthReady,
+                    setIsLoading,
+                    setCurrentPage,
+                    fetchChannels
+                );
+            }, [userId, isTigre, isAuthReady, showMessage, setIsLoading, setCurrentPage, fetchChannels]);
+
+            const handleAttachFile = React.useCallback(() => {
+                if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                }
+                setShowOptionsMenu(false);
+            }, []);
+
+            const onFileSelected = React.useCallback(async (event) => {
+                // Pasa los estados y setters necesarios a la función global
+                window.useChannelManagement(userId, userName, isAuthReady, isTigre, showMessage, setIsLoading, setCurrentPage, setActiveChannel, fetchChannels).onFileSelected(
+                    event,
+                    activeChannel,
+                    userId,
+                    userName,
+                    showMessage,
+                    setIsLoading,
+                    scrollToBottom,
+                    isAuthReady
+                );
+            }, [activeChannel, userId, userName, showMessage, setIsLoading, scrollToBottom, isAuthReady]);
+
+            // PWA: Handler para el botón de instalar
+            const handleInstallClick = React.useCallback(async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`Respuesta del usuario al prompt de instalación: ${outcome}`);
+                    setDeferredPrompt(null);
+                }
+            }, [deferredPrompt]);
+
+            const renderHomePage = () => (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-600 to-blue-500 p-4 font-inter">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
+                        <h1 className="text-4xl font-extrabold text-gray-800 mb-6">CHANNEL</h1>
+
+                        {deferredPrompt && !isPwaInstalled && (
+                            <button
+                                onClick={handleInstallClick}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mb-3"
+                            >
+                                Install App
+                            </button>
+                        )}
+
+                        <div className="mb-6">
+                            <label htmlFor="username-input" className="block text-gray-700 text-sm font-bold mb-2">
+                                Your Username:
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    id="username-input"
+                                    type="text"
+                                    placeholder="Username"
+                                    className="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                                    value={userName}
+                                    onChange={(e) => {
+                                        setUserName(e.target.value);
+                                        setUserNameConfirmed(false);
+                                        setIsTigre(false);
+                                        setShowTigreCodeInput(false);
+                                        setTigreCode('');
+                                    }}
+                                    maxLength="48"
+                                    disabled={userNameConfirmed}
+                                />
+                                {!userNameConfirmed && (
+                                    <button
+                                        onClick={handleConfirmUserName}
+                                        className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
+                                    >
+                                        Confirm
+                                    </button>
+                                )}
+                                {userNameConfirmed && (
+                                    <button
+                                        onClick={() => {
+                                            setUserNameConfirmed(false);
+                                            setIsTigre(false);
+                                            setShowTigreCodeInput(false);
+                                            setTigreCode('');
+                                            if (db && userId) {
+                                                const userProfileRef = window.doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+                                                window.setDoc(userProfileRef, { isTigreActive: false }, { merge: true }).catch(e => console.error("Error desactivando Tigre en Firestore:", e));
+                                            }
+                                        }}
+                                        className="bg-gray-400 hover:bg-400 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
+                                    >
+                                        Edit
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {userNameConfirmed && userName.trim() === 'Julian360' && showTigreCodeInput && !isTigre && (
+                            <div className="mt-6 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
+                                <p className="mb-2 font-semibold">Tigre Mode: Enter the 8-digit code to enable.</p>
+                                <input
+                                    type="password"
+                                    placeholder="8-digit code"
+                                    className="w-full p-3 border border-yellow-400 rounded-lg focus:outline-none focus:ring-2 focus:focus:ring-yellow-500"
+                                    value={tigreCode}
+                                    onChange={(e) => setTigreCode(e.target.value)}
+                                    maxLength="8"
+                                />
+                                <button
+                                    onClick={handleTigreCodeSubmit}
+                                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300"
+                                >
+                                    Confirm Code
+                                </button>
+                            </div>
+                        )}
+                        {isTigre && (
+                            <div className="mt-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+                                <p className="font-semibold">Tigre Mode Activated!</p>
+                            </div>
+                        )}
+
+                        <div className="mb-6">
+                            <input
+                                id="channel-name-input"
+                                ref={channelInputRef}
+                                type="text"
+                                placeholder="Channel name"
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                                value={channelName}
+                                onChange={(e) => setChannelName(e.target.value)}
+                                onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleCreateChannel();
+                                    }
+                                }}
+                                maxLength="128"
+                                disabled={!userNameConfirmed}
+                            />
+                        </div>
+
+                        <button
+                            onClick={handleCreateChannel}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl mb-4"
+                            disabled={!userNameConfirmed}
+                        >
+                            Enter
+                        </button>
+
+                        <button
+                            onClick={() => setCurrentPage('explore')}
+                            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transform transition duration-300 hover:scale-105 text-xl"
+                            disabled={!userNameConfirmed}
+                        >
+                            Explore Channels
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const renderChannelPage = () => (
+                <div className="relative flex flex-col items-center min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 font-inter">
+                    <div className="h-full bg-white p-4 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-6 mb-2 pb-1 relative">
+                        <h1
+                            className="text-4xl font-extrabold text-gray-800 mb-2 cursor-pointer"
+                            onClick={() => window.copyToClipboard(activeChannel.name, showMessage)}
+                        >
+                            Channel: <span className="text-blue-600">{activeChannel.name}</span>
+                        </h1>
+                        <p className="text-lg text-gray-600 mb-2">User: <span className="font-bold text-purple-600">{userName}</span></p>
+
+                        <div className="absolute top-4 right-4" ref={optionsMenuRef}>
+                            <button
+                                onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+                                aria-label="Channel options"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-6 w-6"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <circle cx="12" cy="12" r="1"></circle>
+                                    <circle cx="12" cy="5" r="1"></circle>
+                                    <circle cx="12" cy="19" r="1"></circle>
+                                </svg>
+                            </button>
+                            {showOptionsMenu && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                                    {isStreamer ? (
+                                        <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { window.stopStreaming(localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage, setIsLoading, setLocalStream, setRemoteStream, setIsStreaming, setIsStreamer, peerConnectionRef, remoteVideoRef); setShowOptionsMenu(false); }}>Stop Stream ⏹️</button>
+                                    ) : (
+                                        <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { window.startStreaming(userId, userName, activeChannel, showMessage, setIsLoading, localStream, setLocalStream, remoteStream, setRemoteStream, isStreaming, setIsStreaming, isReceivingStream, setIsReceivingStream, isStreamer, setIsStreamer, isStartingStream, setIsStartingStream, peerConnectionRef, localVideoRef, remoteVideoRef); setShowOptionsMenu(false); }}>Stream 🎥</button>
+                                    )}
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={handleAttachFile}>Attach File 📎</button>
+                                    <button className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left" onClick={() => { setShowActivityPanel(true); setShowOptionsMenu(false); }}>Activity 👥</button>
+                                </div>
+                            )}
+                        </div>
+
+                        {(isStreaming || isReceivingStream) && (
+                            <div className="relative w-full aspect-video bg-black rounded-lg mb-4 overflow-hidden">
+                                {isStreamer && localStream && (
+                                    <video
+                                        ref={localVideoRef}
+                                        autoPlay
+                                        muted
+                                        playsInline
+                                        className="absolute inset-0 w-full h-full object-contain"
+                                        style={{ transform: 'scaleX(-1)' }}
+                                    ></video>
+                                )}
+                                {!isStreamer && remoteStream && (
+                                    <video
+                                        ref={remoteVideoRef}
+                                        autoPlay
+                                        muted
+                                        playsInline
+                                        className="absolute inset-0 w-full h-full object-contain"
+                                    ></video>
+                                )}
+                                {(!localStream && !remoteStream) && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xl">
+                                        Waiting for stream...
+                                    </div>
+                                )}
+                                {!isStreamer && remoteStream && remoteVideoRef.current && (remoteVideoRef.current.paused || remoteVideoRef.current.muted) && (
+                                    <button
+                                        onClick={() => {
+                                            if (remoteVideoRef.current) {
+                                                remoteVideoRef.current.muted = false;
+                                                remoteVideoRef.current.play().catch(error => {
+                                                    console.error("DEBUG PROFUNDO: Error al intentar reproducir video remoto desde el botón de desmutear:", error);
+                                                    showMessage("Error al reproducir el video. Verifique los permisos de reproducción automática.", 'error');
+                                                });
+                                                if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+                                                    remoteStream.getAudioTracks().forEach(track => {
+                                                        track.enabled = true;
+                                                    });
+                                                }
+                                                showMessage("Video desmuteado.", 'info');
+                                            }
+                                        }}
+                                        className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white text-xl font-bold rounded-lg cursor-pointer hover:bg-opacity-75 transition-opacity duration-200"
+                                    >
+                                        ▶️ Play Stream
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="mb-1 w-full bg-gray-100 p-1 rounded-xl shadow-inner border border-gray-200">
+                            <div className="h-[70vh] md:h-[66vh] bg-white rounded-lg p-2 overflow-y-auto border border-gray-300 mb-1 flex flex-col" style={{ minHeight: '100px' }}>
+                                {chatMessages.length > 0 ? (
+                                    chatMessages.map((msg) => (
+                                        <div key={msg.id} className={`mb-2 p-2 rounded-lg ${msg.senderId === userId ? 'bg-blue-100 self-end text-right' : 'bg-gray-200 self-start text-left'}`} style={{ maxWidth: '80%' }}>
+                                            <p className="font-semibold text-xs">{msg.senderId === userId ? 'You' : msg.senderUserName}</p>
+                                            {msg.fileUrl ? (
+                                                msg.fileType && msg.fileType.startsWith('image/') ? (
+                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block">
+                                                        <img src={msg.fileUrl} alt={msg.fileName || 'Attached image'} className="max-w-xs max-h-32 rounded-lg object-contain mb-1" />
+                                                        <span className="text-blue-600 underline text-sm md:text-base">
+                                                            🖼️ {msg.fileName || 'Attached Image'}
+                                                        </span>
+                                                    </a>
+                                                ) :
+                                                msg.fileType && msg.fileType.startsWith('audio/') ? (
+                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block w-full max-w-sm">
+                                                        <audio controls src={msg.fileUrl} className="w-full mb-1"></audio>
+                                                        <span className="text-blue-600 underline text-sm md:text-base">
+                                                            🎵 {msg.fileName || 'Attached Audio'}
+                                                        </span>
+                                                    </a>
+                                                ) :
+                                                msg.fileType && msg.fileType.startsWith('video/') ? (
+                                                    <div className="flex flex-col items-start">
+                                                        <p className="text-sm md:text-base text-gray-800 mb-1">
+                                                            ▶️ <strong>Video</strong>
+                                                        </p>
+                                                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
+                                                            {msg.fileName || 'Attached Video'}
+                                                        </a>
+                                                    </div>
+                                                ) : (
+                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline text-sm md:text-base">
+                                                        📎 {msg.fileName || 'Attached File'}
+                                                    </a>
+                                                )
+                                            ) : (
+                                                <p className="text-sm md:text-base text-gray-800">{msg.text}</p>
+                                            )}
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                                            </p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-500 italic m-auto">Sé el primero en enviar un mensaje.</p>
+                                )}
+                                <div ref={chatMessagesEndRef} />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Escribe tu mensaje..."
+                                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:focus:ring-blue-500"
+                                value={currentMessage}
+                                onChange={(e) => setCurrentMessage(e.target.value)}
+                                onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleSendMessage();
+                                    }
+                                }}
+                                disabled={!isAuthReady || !db || !userId}
+                            />
+                            <input
+                                type="file"
+                                id="file-upload-input"
+                                ref={fileInputRef}
+                                style={{ display: 'none' }}
+                                onChange={onFileSelected}
+                            />
+                        </div>
+                    </div>
+
+                    {showActivityPanel && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-end z-40">
+                            <div className="bg-white w-full max-w-xs p-6 rounded-l-2xl shadow-lg flex flex-col">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl font-bold text-gray-800">Actividad del Canal</h2>
+                                    <button
+                                        onClick={() => setShowActivityPanel(false)}
+                                        className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
+                                    >
+                                        &times;
+                                    </button>
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-3">Miembros del Canal:</h3>
+                                <div className="flex-grow overflow-y-auto">
+                                    {channelMembers.length > 0 ? (
+                                        <ul className="space-y-2">
+                                            {channelMembers.map((member) => (
+                                                <li key={member.id} className="flex items-center text-gray-700">
+                                                    <span className="font-medium">{member.userName}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-gray-500 italic">No hay miembros registrados todavía.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+
+            const renderExplorePage = () => (
+                <div className="flex flex-col items-center justify-start min-h-screen bg-gradient-to-br from-teal-500 to-cyan-600 p-4 font-inter">
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-2xl text-center mt-8 relative">
+                        <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Explorar Canales</h1>
+                        <p className="text-lg text-gray-600 mb-8"> </p>
+
+                        <div className="absolute top-4 right-4" ref={exploreMenuRef}>
+                            <button
+                                onClick={() => setShowExploreMenu(!showExploreMenu)}
+                                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+                                aria-label="Explore options"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-6 w-6"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <circle cx="12" cy="12" r="1"></circle>
+                                    <circle cx="12" cy="5" r="1"></circle>
+                                    <circle cx="12" cy="19" r="1"></circle>
+                                </svg>
+                            </button>
+                            {showExploreMenu && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                                    <button
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                                        onClick={() => { setSortOption('activity'); setShowExploreMenu(false); setShowSearchInput(false); setSearchQuery(''); }}
+                                    >
+                                        Más Activos
+                                    </button>
+                                    <button
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                                        onClick={() => { setSortOption('recent'); setShowExploreMenu(false); setShowSearchInput(false); setSearchQuery(''); }}
+                                    >
+                                        Más Recientes
+                                    </button>
+                                    <button
+                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                                        onClick={() => {
+                                            setShowSearchInput(!showSearchInput);
+                                            setShowExploreMenu(false);
+                                            setSortOption('none');
+                                        }}
+                                    >
+                                        Buscar Canal
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {showSearchInput && (
+                            <div className="mb-6 mt-4">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar canal por nombre..."
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-lg"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    ref={searchInputRef}
+                                />
+                            </div>
+                        )}
+
+                        {/* Utiliza el componente ChannelList aquí */}
+                        {React.createElement(window.ChannelList, {
+                            availableChannels: availableChannels,
+                            handleJoinChannelFromExplore: handleJoinChannelFromExplore,
+                            handleDeleteChannel: handleDeleteChannel,
+                            userId: userId,
+                            isTigre: isTigre
+                        })}
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    {React.createElement(window.MessageDisplay, { message: message, type: messageType, onClose: () => setMessage(null) })}
+                    {isLoading && React.createElement(window.LoadingSpinner)}
+                    {currentPage === 'home' ? renderHomePage() : (currentPage === 'channel' ? renderChannelPage() : renderExplorePage())}
+                </div>
+            );
+        };
+
+        ReactDOM.render(React.createElement(App), document.getElementById('root'));
+    </script>
 </body>
 </html>
