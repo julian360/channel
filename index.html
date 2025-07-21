@@ -26,6 +26,9 @@
         // IMPORTANT: In a real Canvas environment, these are provided automatically.
         // For local testing, your actual Firebase configuration details are now included below.
         window.__app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Replace 'default-app-id' if Canvas provides one
+        // WARNING: If running locally and experiencing "Missing or insufficient permissions" errors,
+        // ensure your Firestore security rules use 'default-app-id' in the /artifacts/{appId}/ path,
+        // or configure window.__app_id to match your actual Canvas app ID if known.
         window.__firebase_config = typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
             apiKey: "AIzaSyBELawPeUmP2tRaL19X7Tr6MRcI9oMgdSM", // Your Firebase API key
             authDomain: "channel-jl.firebaseapp.com", // Your Firebase authentication domain
@@ -106,7 +109,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v87 (WebRTC Streaming - Play Button & Track Debugging)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-21-DailyFix-v90 (WebRTC Streaming - AbortError Fix)");
 
 
         // Helper function to generate a random username for new users
@@ -433,7 +436,11 @@
                     return;
                 }
                 setIsLoading(true);
+                console.log("DEBUG PROFUNDO: fetchChannels - Current db object:", db); // ADDED LOG
+                console.log("DEBUG PROFUNDO: fetchChannels - Current auth.currentUser:", auth.currentUser); // ADDED LOG
+                console.log("DEBUG PROFUNDO: fetchChannels - Using __app_id:", window.__app_id); // ADDED LOG
                 const channelsColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels`);
+                console.log("DEBUG PROFUNDO: fetchChannels - Attempting to get channels from path:", channelsColRef.path, "with userId:", userId); // MODIFIED LOG
                 const q = window.query(channelsColRef);
 
                 try {
@@ -483,7 +490,7 @@
                 } finally {
                     setIsLoading(false);
                 }
-            }, [isAuthReady, db, sortOption, searchQuery, showMessage, setIsLoading, setAvailableChannels]);
+            }, [isAuthReady, db, auth, sortOption, searchQuery, showMessage, setIsLoading, setAvailableChannels, userId, window.__app_id]); // ADDED auth and window.__app_id to dependencies
 
 
             React.useEffect(() => {
@@ -867,7 +874,7 @@
                 }
             }, [currentMessage, userName, activeChannel, isAuthReady, db, userId, showMessage, scrollToBottom]);
 
-            const handleDeleteChannel = React.useCallback(async (channelDisplayName) => {
+        const handleDeleteChannel = React.useCallback(async (channelDisplayName) => {
                 console.log("DEBUG PROFUNDO: handleDeleteChannel - current userId:", userId);
                 console.log("DEBUG PROFUNDO: handleDeleteChannel - Initiating deletion for channel:", channelDisplayName);
                 const userConfirmed = await new Promise((resolve) => {
@@ -935,6 +942,7 @@
                         });
                         console.log(`DEBUG PROFUNDO: handleDeleteChannel - Deleting ${deleteMessagePromises.length} messages.`);
                         await Promise.all(deleteMessagePromises);
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - All messages deleted.");
 
                         const membersColRef = window.collection(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/members`);
                         const membersSnapshot = await window.getDocs(membersColRef);
@@ -944,13 +952,19 @@
                         });
                         console.log(`DEBUG PROFUNDO: handleDeleteChannel - Deleting ${deleteMemberPromises.length} members.`);
                         await Promise.all(deleteMemberPromises);
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - All members deleted.");
 
                         // Delete WebRTC signaling data
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Checking for WebRTC signaling data."); // NEW LOG
                         const webrtcDocRef = window.doc(db, `artifacts/${window.__app_id}/public/data/channels/${normalizedChannelId}/webrtc_signaling`, 'webrtc_data');
                         const webrtcDocSnap = await window.getDoc(webrtcDocRef);
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - webrtcDocSnap exists:", webrtcDocSnap.exists()); // NEW LOG
+
                         if (webrtcDocSnap.exists()) {
+                            console.log("DEBUG PROFUNDO: handleDeleteChannel - WebRTC signaling document exists. Proceeding with deletion."); // NEW LOG
                             // Delete candidates subcollection first
                             const candidatesColRef = window.collection(webrtcDocRef, 'candidates');
+                            console.log("DEBUG PROFUNDO: handleDeleteChannel - Getting WebRTC candidates."); // NEW LOG
                             const candidatesSnapshot = await window.getDocs(candidatesColRef);
                             const deleteCandidatePromises = [];
                             candidatesSnapshot.forEach(candidateDoc => {
@@ -958,28 +972,45 @@
                             });
                             console.log(`DEBUG PROFUNDO: handleDeleteChannel - Deleting ${deleteCandidatePromises.length} WebRTC candidates.`);
                             await Promise.all(deleteCandidatePromises);
+                            console.log("DEBUG PROFUNDO: handleDeleteChannel - All WebRTC candidates deleted.");
 
                             // Then delete the webrtc_data document itself
+                            console.log("DEBUG PROFUNDO: handleDeleteChannel - Deleting main WebRTC signaling document."); // NEW LOG
                             await window.deleteDoc(webrtcDocRef);
                             console.log("DEBUG PROFUNDO: handleDeleteChannel - WebRTC signaling data cleared from Firestore.");
+                        } else {
+                            console.log("DEBUG PROFUNDO: handleDeleteChannel - No WebRTC signaling data found to delete.");
                         }
+
+
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Attempting to delete main channel document:", normalizedChannelId);
+                        await window.deleteDoc(channelDocRef); // <--- This line should delete the main channel document
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Main channel document DELETED successfully:", normalizedChannelId);
+
+                        showMessage(`Channel "${channelDisplayName}" deleted successfully!`, 'success');
+                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Message shown, navigating to explore page."); // Modified log
+                        setCurrentPage('explore'); // <--- MODIFIED: Navigate to explore page instead of full reload
+                        // NEW: Force a refresh of the explore channels content
+                        fetchChannels(); // <--- ADDED: Call fetchChannels to refresh the list
                     } else {
                         console.log("DEBUG PROFUNDO: handleDeleteChannel - Permission DENIED. Conditions not met.");
                         showMessage("You do not have permission to delete this channel.", 'error');
                     }
                 } catch (error) {
                     console.error("DEBUG PROFUNDO: Error deleting channel (catch general):", error);
+                    console.error("DEBUG PROFUNDO: Código de error:", error.code);
                     if (error.code === 'unavailable' || error.code === 'permission-denied') {
                         showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
                         } else {
                         showMessage("Error deleting channel. Check the console.", 'error');
                     }
-                    setIsLoading(false); // Ensure isLoading is false on error
+                    setIsLoading(false);
                 } finally {
                     console.log("DEBUG PROFUNDO: handleDeleteChannel - Finally block executed. Setting isLoading to false.");
                     setIsLoading(false);
                 }
-            }, [isAuthReady, db, userId, isTigre, showMessage, setIsLoading, fetchChannels]);
+            }, [isAuthReady, db, userId, isTigre, showMessage, setIsLoading, setCurrentPage, fetchChannels]); // ADDED fetchChannels to dependencies
+
 
             // WebRTC Functions
             // The createPeerConnection function is no longer needed as a separate useCallback.
@@ -1009,6 +1040,12 @@
                     remoteStream.getTracks().forEach(track => track.stop());
                     setRemoteStream(null);
                     console.log("DEBUG PROFUNDO: Remote stream tracks stopped and cleared.");
+                }
+                if (remoteVideoRef.current) { // Ensure remote video element is also cleared
+                    remoteVideoRef.current.srcObject = null;
+                    remoteVideoRef.current.muted = true;
+                    remoteVideoRef.current.load();
+                    console.log("DEBUG PROFUNDO: Remote video element srcObject cleared.");
                 }
                 if (peerConnectionRef.current) { // Use ref
                     peerConnectionRef.current.close();
@@ -1091,8 +1128,7 @@
                                 console.log(`DEBUG PROFUNDO: Remote video track settings: Width: ${videoTrack.getSettings().width}, Height: ${videoTrack.getSettings().height}, FrameRate: ${videoTrack.getSettings().frameRate}`);
                             }
                         }
-                        setRemoteStream(event.streams[0]);
-                        // No direct assignment here, relying on useEffect for remoteVideoRef.current
+                        setRemoteStream(event.streams[0]); // Update state with the remote stream
                     };
 
                     // Normalize activeChannel for Firestore paths
@@ -1105,8 +1141,8 @@
                             console.log("DEBUG PROFUNDO: ICE Candidate found for viewer:", event.candidate);
                             // Save ICE candidate to Firestore with senderId
                             try {
-                                const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
-                                await window.setDoc(candidateRef, {
+                                // Using addDoc instead of setDoc with a generated ID
+                                await window.addDoc(candidatesCollectionRef, {
                                     ...event.candidate.toJSON(),
                                     senderId: userId // Add senderId to the candidate document
                                 });
@@ -1124,9 +1160,11 @@
                     const unsubscribeOffer = window.onSnapshot(webrtcDocRef, async (docSnap) => {
                         if (docSnap.exists()) {
                             const data = docSnap.data();
-                            if (data.offer && data.offer.senderId === streamerId && peerConnectionRef.current && !peerConnectionRef.current.currentRemoteDescription) { // Added peerConnectionRef.current check
+                            // Check if offer exists, it's from the expected streamer, and remote description hasn't been set yet
+                            if (data.offer && data.offer.senderId === streamerId && peerConnectionRef.current && !peerConnectionRef.current.currentRemoteDescription) {
                                 const offer = new RTCSessionDescription(data.offer);
                                 console.log("DEBUG PROFUNDO: Received offer from Firestore for viewer:", offer);
+                                console.log("DEBUG PROFUNDO: Viewer's Remote Description (Received Offer) SDP:", offer.sdp); // <-- ADDED LOG
                                 console.log(`DEBUG PROFUNDO: Viewer PC signalingState BEFORE setRemoteDescription(offer): ${peerConnectionRef.current.signalingState}`);
                                 try {
                                     await peerConnectionRef.current.setRemoteDescription(offer);
@@ -1139,6 +1177,7 @@
                                     console.log(`DEBUG PROFUNDO: Viewer PC signalingState BEFORE setLocalDescription(answer): ${peerConnectionRef.current.signalingState}`);
                                     await peerConnectionRef.current.setLocalDescription(answer);
                                     console.log("DEBUG PROFUNDO: Local description (answer) set for viewer. Local description object:", peerConnectionRef.current.localDescription);
+                                    console.log("DEBUG PROFUNDO: Viewer's Local Description (Answer) SDP:", peerConnectionRef.current.localDescription.sdp); // <-- ADDED LOG
                                     console.log(`DEBUG PROFUNDO: Viewer PC signalingState AFTER setLocalDescription(answer): ${peerConnectionRef.current.signalingState}`);
 
 
@@ -1157,12 +1196,13 @@
                                     // After setting the answer, collect and add ICE candidates from streamer
                                     const candidateSnapshot = await window.getDocs(candidatesCollectionRef);
                                     candidateSnapshot.forEach(async (candidateDoc) => {
-                                        if (candidateDoc.exists() && candidateDoc.data().senderId === streamerId && peerConnectionRef.current) { // Added peerConnectionRef.current check
+                                        // Only add candidates sent by the streamer (not by the viewer itself)
+                                        if (candidateDoc.exists() && candidateDoc.data().senderId === streamerId && peerConnectionRef.current) {
                                             try {
                                                 const candidate = new RTCIceCandidate(candidateDoc.data());
                                                 await peerConnectionRef.current.addIceCandidate(candidate);
                                                 console.log("DEBUG PROFUNDO: Added streamer ICE candidate for viewer:", candidate);
-                                                // Optionally delete the candidate after adding it to avoid processing duplicates
+                                                // Optionally delete the candidate from Firestore after adding it to avoid processing duplicates
                                                 await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
                                             } catch (e) {
                                                 console.error("DEBUG PROFUNDO: Error adding streamer ICE candidate for viewer (from snapshot):", e);
@@ -1186,13 +1226,14 @@
                         snapshot.docChanges().forEach(async (change) => {
                             if (change.type === "added") {
                                 const candidateData = change.doc.data();
-                                if (candidateData.senderId === streamerId && peerConnectionRef.current) { // Added peerConnectionRef.current check
+                                // Only add candidates sent by the streamer (not by the viewer itself)
+                                if (candidateData.senderId === streamerId && peerConnectionRef.current) {
                                     try {
                                         const candidate = new RTCIceCandidate(candidateData);
                                         if (peerConnectionRef.current.remoteDescription) { // Only add if remote description is set
                                             await peerConnectionRef.current.addIceCandidate(candidate);
                                             console.log("DEBUG PROFUNDO: Added streamer candidate (via listener) for viewer:", candidate);
-                                            // Optionally delete the candidate after adding it to avoid processing duplicates
+                                            // Optionally delete the candidate from Firestore after adding it to avoid processing duplicates
                                             await window.deleteDoc(window.doc(candidatesCollectionRef, change.doc.id));
                                         } else {
                                             console.warn("DEBUG PROFUNDO: Remote description not set yet, deferring streamer candidate for viewer:", candidate);
@@ -1238,6 +1279,16 @@
                         localStream.getTracks().forEach(track => track.stop());
                         setLocalStream(null);
                         console.log("DEBUG PROFUNDO: Local stream tracks stopped and cleared.");
+                    }
+                    if (remoteStream) { // NEW: Ensure remote stream is also stopped and cleared
+                        remoteStream.getTracks().forEach(track => track.stop());
+                        setRemoteStream(null);
+                        if (remoteVideoRef.current) {
+                            remoteVideoRef.current.srcObject = null;
+                            remoteVideoRef.current.muted = true; // Ensure it's muted
+                            remoteVideoRef.current.load(); // Reload to clear previous frame
+                        }
+                        console.log("DEBUG PROFUNDO: Remote stream tracks stopped and cleared (during stopStreaming).");
                     }
                     if (peerConnectionRef.current) { // Use ref
                         peerConnectionRef.current.close();
@@ -1289,12 +1340,12 @@
                     setIsLoading(false);
                     console.log("DEBUG PROFUNDO: stopStreaming - Finally block executed.");
                 }
-            }, [localStream, activeChannel, db, userId, isStreamer, showMessage]);
+            }, [localStream, remoteStream, activeChannel, db, userId, isStreamer, showMessage]);
 
             // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-            // Version: 2025-07-20-DailyFix-v87
+            // Version: 2025-07-21-DailyFix-v90
             const startStreaming = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v87 (WebRTC Streaming - Play Button & Track Debugging)");
+                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-21-DailyFix-v90 (WebRTC Streaming - AbortError Fix)");
 
                 // Get the current user ID directly from Firebase Auth right before using it
                 const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1435,8 +1486,8 @@
                             console.log("DEBUG PROFUNDO: ICE Candidate found:", event.candidate);
                             // Save ICE candidate to Firestore with senderId
                             try {
-                                const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
-                                await window.setDoc(candidateRef, {
+                                // Using addDoc instead of setDoc with a generated ID
+                                await window.addDoc(candidatesCollectionRef, {
                                     ...event.candidate.toJSON(),
                                     senderId: currentAuthUserId // Add senderId to the candidate document
                                 });
@@ -1460,7 +1511,7 @@
                     // NEW: Explicitly create and set offer after adding tracks with a timeout
                     console.log("DEBUG PROFUNDO: BEFORE createOffer. Current signalingState:", peerConnectionRef.current.signalingState);
                     console.log("DEBUG PROFUNDO: Transceivers:", peerConnectionRef.current.getTransceivers());
-                    console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, tracks: ${stream.getTracks().length}`);
+                    console.log(`DEBUG PROFUNDO: Media Stream State - active: ${stream.active}, readyState: ${stream.readyState}, Tracks: ${stream.getTracks().length}`);
 
                     // NEW: Robust check for stream and track readiness before creating offer - PRIORITIZING TRACK READYSTATE
                     let offer;
@@ -1513,7 +1564,7 @@
                     }
 
                     // Now attempt to create offer after readiness check
-                    const createOfferPromise = peerConnectionRef.current.createOffer();
+                    const createOfferPromise = peerConnectionRef.current.createOffer(); // Removed offerOptions as it's not defined
                     const createOfferTimeout = new Promise((resolve, reject) =>
                         setTimeout(() => reject(new Error('createOffer timed out')), 20000) // 20 seconds timeout for createOffer
                     );
@@ -1559,7 +1610,7 @@
                         await window.setDoc(webrtcDocRef, {
                             offer: {
                                 sdp: peerConnectionRef.current.localDescription.sdp,
-                                type: peerConnectionRef.current.localDescription.type, // FIX: Corrected from peerConnection to peerConnectionRef.current
+                                type: peerConnectionRef.current.localDescription.type,
                                 senderId: currentAuthUserId,
                                 senderUserName: userName,
                                 timestamp: window.serverTimestamp()
@@ -1622,10 +1673,10 @@
                                     candidateSnapshot.forEach(async (candidateDoc) => {
                                         if (candidateDoc.exists() && candidateDoc.data().senderId !== currentAuthUserId && peerConnectionRef.current) { // Added peerConnectionRef.current check
                                             try {
-                                                const candidate = new RTCIceCandidate(candidateDoc.data());
+                                                const candidate = new RTCIceCandidate(candidateData);
                                                 await peerConnectionRef.current.addIceCandidate(candidate);
                                                 console.log("DEBUG PROFUNDO: Added viewer ICE candidate:", candidate);
-                                                // Optionally delete the candidate after adding it to avoid processing duplicates
+                                                // Optionally delete the candidate from Firestore after adding it to avoid processing duplicates
                                                 await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
                                             } catch (e) {
                                                 console.error("DEBUG PROFUNDO: Error adding viewer ICE candidate (from snapshot):", e);
@@ -1654,7 +1705,7 @@
                                         if (peerConnectionRef.current.remoteDescription) { // Only add if remote description is set
                                             await peerConnectionRef.current.addIceCandidate(candidate);
                                             console.log("DEBUG PROFUNDO: Added viewer candidate (via listener):", candidate);
-                                            // Optionally delete the candidate after adding it to avoid processing duplicates
+                                            // Optionally delete the candidate from Firestore after adding it to avoid processing duplicates
                                             await window.deleteDoc(window.doc(candidatesCollectionRef, change.doc.id));
                                         } else {
                                             console.warn("DEBUG PROFUNDO: Remote description not set yet, deferring viewer candidate:", candidate);
@@ -1717,23 +1768,58 @@
             // Effect to assign remoteStream to remote video element
             React.useEffect(() => {
                 console.log("DEBUG PROFUNDO: useEffect for remoteStream triggered. remoteStream:", remoteStream, "remoteVideoRef.current:", remoteVideoRef.current, "isReceivingStream:", isReceivingStream);
-                // Only attempt to attach if remoteVideoRef.current is available and remoteStream exists, AND we are receiving a stream
                 if (remoteVideoRef.current && remoteStream && isReceivingStream) {
-                    // Add a small delay to ensure the video element is fully ready
-                    setTimeout(() => {
-                        if (remoteVideoRef.current) { // Re-check after timeout
-                            remoteVideoRef.current.srcObject = remoteStream;
-                            console.log("DEBUG PROFUNDO: Remote video stream attached to video element via useEffect after delay.");
-                            // NEW: Attempt to play the remote video when it's attached
-                            remoteVideoRef.current.play().catch(e => console.error("DEBUG PROFUNDO: Error playing remote video:", e));
+                    // Only assign srcObject if it's different to prevent unnecessary reloads/interruptions
+                    if (remoteVideoRef.current.srcObject !== remoteStream) {
+                        console.log("DEBUG PROFUNDO: Assigning remote stream to video element via useEffect.");
+                        remoteVideoRef.current.srcObject = remoteStream;
+
+                        // Wait for 'loadedmetadata' before attempting to play
+                        remoteVideoRef.current.onloadedmetadata = () => {
+                            console.log("DEBUG PROFUNDO: Remote video loadedmetadata event fired (from useEffect).");
+                            // Only attempt to play if the video is paused or if it hasn't started playing yet
+                            if (remoteVideoRef.current.paused || remoteVideoRef.current.ended || remoteVideoRef.current.readyState === 0) {
+                                console.log("DEBUG PROFUNDO: Attempting to play remote video (muted) after loadedmetadata (from useEffect).");
+                                remoteVideoRef.current.muted = true; // Start muted for autoplay
+                                remoteVideoRef.current.play().then(() => {
+                                    console.log("DEBUG PROFUNDO: Remote video started playing (muted) from useEffect/loadedmetadata.");
+                                    setIsLoading(false); // Hide loading spinner once video starts (even if muted)
+                                    showMessage("Uniéndote al stream (silenciado). Por favor, haz clic para activar el audio.", 'info');
+                                }).catch(error => {
+                                    console.error(`DEBUG PROFUNDO: Error attempting to play remote video from useEffect/loadedmetadata: Name: ${error.name}, Message: ${error.message}`, error);
+                                    showMessage("Error al reproducir el video del stream. Habilite la reproducción automática o haga clic para reproducir.", 'error');
+                                    setIsLoading(false); // Hide loading spinner on error
+                                });
+                            } else {
+                                console.log("DEBUG PROFUNDO: Remote video already playing or not in a state to be played automatically (from useEffect/loadedmetadata).");
+                                setIsLoading(false);
+                            }
+                            remoteVideoRef.current.onloadedmetadata = null; // Remove the event listener after it fires once
+                        };
+                    } else {
+                        console.log("DEBUG PROFUNDO: remoteVideoRef.current.srcObject is already the same stream (from useEffect).");
+                        // If the stream is already set, and it's not playing, try to play it (e.g., if it was paused externally)
+                        if (remoteVideoRef.current.paused || remoteVideoRef.current.ended || remoteVideoRef.current.readyState === 0) {
+                             console.log("DEBUG PROFUNDO: Attempting to play existing remote video (muted) from useEffect.");
+                             remoteVideoRef.current.muted = true;
+                             remoteVideoRef.current.play().then(() => {
+                                 console.log("DEBUG PROFUNDO: Existing remote video started playing (muted) from useEffect.");
+                                 setIsLoading(false);
+                                 showMessage("Uniéndote al stream (silenciado). Por favor, haz clic para activar el audio.", 'info');
+                             }).catch(error => {
+                                 console.error(`DEBUG PROFUNDO: Error playing existing remote video from useEffect: Name: ${error.name}, Message: ${error.message}`, error);
+                                 showMessage("Error al reproducir el video del stream. Habilite la reproducción automática o haga clic para reproducir.", 'error');
+                                 setIsLoading(false);
+                             });
                         } else {
-                            console.warn("DEBUG PROFUNDO: remoteVideoRef.current became null during setTimeout for remoteStream.");
+                            console.log("DEBUG PROFUNDO: Remote video already playing or not in a state to be played automatically (existing stream from useEffect).");
+                            setIsLoading(false);
                         }
-                    }, 1000); // Increased to 1000ms delay
+                    }
                 } else if (!remoteVideoRef.current && remoteStream && isReceivingStream) {
                     console.warn("DEBUG PROFUNDO: remoteVideoRef.current is null in useEffect for remoteStream, but remoteStream exists and isReceivingStream is true. This might indicate a rendering delay.");
                 }
-            }, [remoteStream, isReceivingStream]);
+            }, [remoteStream, isReceivingStream, showMessage]);
 
 
             const copyToClipboard = React.useCallback((text) => {
@@ -2040,9 +2126,24 @@
                                     </div>
                                 )}
                                 {/* NEW: Play button for viewer if remoteStream exists and is not playing */}
-                                {!isStreamer && remoteStream && remoteVideoRef.current && remoteVideoRef.current.paused && (
+                                {/* Condition ensures button is visible if stream is received but not playing/muted */}
+                                {!isStreamer && remoteStream && remoteVideoRef.current && (remoteVideoRef.current.paused || remoteVideoRef.current.muted) && (
                                     <button
-                                        onClick={() => remoteVideoRef.current.play().catch(e => console.error("DEBUG PROFUNDO: Error playing remote video via button:", e))}
+                                        onClick={() => {
+                                            if (remoteVideoRef.current) {
+                                                remoteVideoRef.current.muted = false; // Unmute the HTML video element
+                                                remoteVideoRef.current.play().catch(error => {
+                                                    console.error("DEBUG PROFUNDO: Error al intentar reproducir video remoto desde el botón de desmutear:", error);
+                                                    showMessage("Error al reproducir el video. Verifique los permisos de reproducción automática.", 'error');
+                                                });
+                                                if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+                                                    remoteStream.getAudioTracks().forEach(track => {
+                                                        track.enabled = true; // Enable audio track
+                                                    });
+                                                }
+                                                showMessage("Video desmuteado.", 'info');
+                                            }
+                                        }}
                                         className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white text-xl font-bold rounded-lg cursor-pointer hover:bg-opacity-75 transition-opacity duration-200"
                                     >
                                         ▶️ Play Stream
