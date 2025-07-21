@@ -1,0 +1,185 @@
+// hooks/useAuthAndFirestore.js
+import React from 'react';
+import { auth, db, onAuthStateChanged, doc, getDoc, setDoc, signInAnonymously } from '../firebase-init.js';
+import { generateRandomUserName } from '../utils/helpers.js';
+
+export const useAuthAndFirestore = (showMessage) => {
+    const [userId, setUserId] = React.useState(null);
+    const [userName, setUserName] = React.useState('');
+    const [userNameConfirmed, setUserNameConfirmed] = React.useState(false);
+    const [isAuthReady, setIsAuthReady] = React.useState(false);
+    const [isTigre, setIsTigre] = React.useState(false);
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [showTigreCodeInput, setShowTigreCodeInput] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!auth || !db) {
+            console.log("DEBUG PROFUNDO: Auth or DB not yet available for listener setup. Skipping.");
+            return;
+        }
+
+        console.log("DEBUG PROFUNDO: Setting up onAuthStateChanged listener.");
+        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+            let currentUserId = null;
+            if (user) {
+                currentUserId = user.uid;
+                setUserId(currentUserId);
+                console.log("DEBUG PROFUNDO: onAuthStateChanged - userId established:", currentUserId);
+            } else {
+                console.log("DEBUG PROFUNDO: onAuthStateChanged - User not authenticated, attempting signInAnonymously if necessary.");
+                try {
+                    const userCredential = await signInAnonymously(auth);
+                    currentUserId = userCredential.user.uid;
+                    setUserId(currentUserId);
+                    console.log("DEBUG PROFUNDO: onAuthStateChanged - ANONYMOUS userId established after signIn:", currentUserId);
+                } catch (anonError) {
+                    console.error("DEBUG PROFUNDO: Error during anonymous login in onAuthStateChanged:", anonError);
+                    currentUserId = (Math.random().toString(36).substring(2) + Date.now().toString(36));
+                    setUserId(currentUserId);
+                    showMessage("Could not authenticate user. Using fallback ID. Some functions might be limited.", 'error');
+                    console.log("DEBUG PROFUNDO: onAuthStateChanged - Fallback userId established due to login error:", currentUserId);
+                }
+            }
+
+            if (currentUserId && db) {
+                const userProfileRef = doc(db, `artifacts/${window.__app_id}/users/${currentUserId}/profile`, 'userProfile');
+                try {
+                    console.log("DEBUG PROFUNDO: Attempting to read/create user profile at path:", userProfileRef.path);
+                    const userProfileSnap = await getDoc(userProfileRef);
+
+                    let profileData;
+                    if (userProfileSnap.exists()) {
+                        profileData = userProfileSnap.data();
+                        console.log(`DEBUG PROFUNDO: User profile loaded for ${currentUserId}.`);
+                    } else {
+                        const userNameToUse = generateRandomUserName();
+                        profileData = {
+                            userName: userNameToUse,
+                            isTigreActive: false
+                        };
+                        await setDoc(userProfileRef, profileData);
+                        console.log(`DEBUG PROFUNDO: User profile created for ${currentUserId}.`);
+                    }
+
+                    setUserName(profileData.userName);
+                    setUserNameConfirmed(true);
+                    setIsTigre(profileData.isTigreActive === true);
+
+                } catch (profileError) {
+                    console.error("DEBUG PROFUNDO: Error loading/creating user profile from Firestore (inside onAuthStateChanged):", profileError);
+                    setIsTigre(false);
+                    setShowTigreCodeInput(false);
+                    showMessage("Error loading your user profile. Check the console.", 'error');
+                }
+            } else {
+                setIsTigre(false);
+                setShowTigreCodeInput(false);
+                console.log("DEBUG PROFUNDO: No userId or db available to load profile. isTigre set to false.");
+            }
+            setIsAuthReady(true);
+            setIsLoading(false);
+            console.log("DEBUG PROFUNDO: isAuthReady set to true.");
+        });
+
+        return () => unsubscribeAuth();
+    }, [auth, db, showMessage]);
+
+    const handleConfirmUserName = React.useCallback(async () => {
+        console.log("DEBUG PROFUNDO: handleConfirmUserName - Initiated.");
+        if (userName.trim() === '') {
+            showMessage('Please enter a username.', 'error');
+            return;
+        }
+        if (userName.trim().length > 48) {
+            showMessage('Username cannot exceed 48 characters.', 'error');
+            return;
+        }
+        if (!isAuthReady || !db || !userId) {
+            console.warn("DEBUG PROFUNDO: handleConfirmUserName - Firebase is not ready or db/userId is null.");
+            showMessage("Authentication is not ready. Please try again.", 'error');
+            return;
+        }
+        setIsLoading(true);
+        console.log("DEBUG PROFUNDO: handleConfirmUserName - isLoading set to true.");
+        try {
+            const userProfileRef = doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+            console.log("DEBUG PROFUNDO: handleConfirmUserName - Attempting to save user profile.");
+            let profileUpdate = { userName: userName.trim() };
+
+            profileUpdate.isTigreActive = false;
+
+            console.log("DEBUG PROFUNDO: handleConfirmUserName - Saving user profile:", { userId: userId, userName: userName.trim(), isTigreActive: profileUpdate.isTigreActive });
+            await setDoc(userProfileRef, profileUpdate, { merge: true });
+            console.log("DEBUG PROFUNDO: handleConfirmUserName - User profile saved.");
+            setUserNameConfirmed(true);
+            showMessage('Username confirmed!', 'success');
+            setIsTigre(profileUpdate.isTigreActive);
+
+            if (userName.trim() === 'Julian360' && !profileUpdate.isTigreActive) {
+                setShowTigreCodeInput(true);
+                console.log("DEBUG PROFUNDO: handleConfirmUserName - User is Julian360 and Tigre mode inactive. Showing Tigre code input.");
+            } else {
+                setShowTigreCodeInput(false);
+                console.log("DEBUG PROFUNDO: handleConfirmUserName - User is NOT Julian360 or Tigre mode active. Hiding Tigre code input.");
+            }
+        } catch (error) {
+            console.error("DEBUG PROFUNDO: Error saving username (catch block):", error);
+            if (error.code === 'unavailable' || error.code === 'permission-denied') {
+                showMessage("Connection error or permissions. Make sure your Firestore rules are correct and you have an internet connection.", 'error');
+            } else {
+                showMessage("Error saving username. Please try again.", 'error');
+            }
+            setIsLoading(false);
+        } finally {
+            console.log("DEBUG PROFUNDO: handleConfirmUserName - Finally block executed. Setting isLoading to false.");
+            setIsLoading(false);
+        }
+    }, [userName, isAuthReady, db, userId, showMessage, setIsLoading, setShowTigreCodeInput, setIsTigre, setUserNameConfirmed]);
+
+    const handleTigreCodeSubmit = React.useCallback(async (tigreCode) => {
+        console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - current userId:", userId);
+        console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Entered code:", tigreCode);
+        if (parseInt(tigreCode) === (15476 * 1000 + 767)) {
+            setIsTigre(true);
+            showMessage('Tigre mode activated. You can now delete any channel.', 'success');
+            setShowTigreCodeInput(false);
+
+            if (db && userId) {
+                try {
+                    const userProfileRef = doc(db, `artifacts/${window.__app_id}/users/${userId}/profile`, 'userProfile');
+                    console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Attempting to activate Tigre mode in Firestore for userId:", userId, "with isTigreActive: true (boolean).");
+                    await setDoc(userProfileRef, { isTigreActive: true }, { merge: true });
+                    console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Tigre mode activated in Firestore for user:", userId);
+                    const updatedProfileSnap = await getDoc(userProfileRef);
+                    if (updatedProfileSnap.exists()) {
+                        console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - User profile READ after update:", updatedProfileSnap.data());
+                    }
+                } catch (error) {
+                    console.error("DEBUG PROFUNDO: handleTigreCodeSubmit - Error activating Tigre mode in Firestore:", error);
+                    showMessage("Error saving Tigre status. Please try again.", 'error');
+                }
+            }
+
+        } else {
+            showMessage('Incorrect code. Please try again.', 'error');
+            console.log("DEBUG PROFUNDO: handleTigreCodeSubmit - Incorrect code.");
+        }
+    }, [showMessage, setIsTigre, setShowTigreCodeInput, db, userId]);
+
+    return {
+        userId,
+        userName,
+        setUserName,
+        userNameConfirmed,
+        setUserNameConfirmed,
+        isAuthReady,
+        isLoading,
+        setIsLoading,
+        isTigre,
+        setIsTigre,
+        showTigreCodeInput,
+        setShowTigreCodeInput,
+        handleConfirmUserName,
+        handleTigreCodeSubmit
+    };
+};
