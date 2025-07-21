@@ -106,7 +106,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v78 (WebRTC Streaming - Fix ReferenceError)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v82 (WebRTC Streaming - Robust Video Assignment)");
 
 
         // Helper function to generate a random username for new users
@@ -963,11 +963,6 @@
                             await window.deleteDoc(webrtcDocRef);
                             console.log("DEBUG PROFUNDO: handleDeleteChannel - WebRTC signaling data cleared from Firestore.");
                         }
-
-                        await window.deleteDoc(channelDocRef);
-                        showMessage(`Channel "${channelDisplayName}" successfully deleted.`, 'success');
-                        console.log("DEBUG PROFUNDO: handleDeleteChannel - Main channel deleted.");
-                        fetchChannels();
                     } else {
                         console.log("DEBUG PROFUNDO: handleDeleteChannel - Permission DENIED. Conditions not met.");
                         showMessage("You do not have permission to delete this channel.", 'error');
@@ -1077,20 +1072,7 @@
                     peerConnectionRef.current.ontrack = (event) => {
                         console.log("DEBUG PROFUNDO: Remote track received for viewer:", event.streams[0]);
                         setRemoteStream(event.streams[0]);
-                        // NEW: Direct assignment to remote video element after a small delay
-                        if (remoteVideoRef.current) {
-                            console.log("DEBUG PROFUNDO: remoteVideoRef.current exists for direct assignment.");
-                            setTimeout(() => {
-                                if (remoteVideoRef.current) { // Re-check in case it unmounted
-                                    remoteVideoRef.current.srcObject = event.streams[0];
-                                    console.log("DEBUG PROFUNDO: Remote stream directly attached to viewer video element.");
-                                } else {
-                                    console.warn("DEBUG PROFUNDO: remoteVideoRef.current became null during setTimeout for direct assignment.");
-                                }
-                            }, 100); // Small delay
-                        } else {
-                            console.warn("DEBUG PROFUNDO: remoteVideoRef.current is null immediately after setRemoteStream. Relying on useEffect.");
-                        }
+                        // No direct assignment here, relying on useEffect for remoteVideoRef.current
                     };
 
                     // Normalize activeChannel for Firestore paths
@@ -1284,9 +1266,9 @@
             }, [localStream, activeChannel, db, userId, isStreamer, showMessage]);
 
             // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-            // Version: 2025-07-20-DailyFix-v78
+            // Version: 2025-07-20-DailyFix-v82
             const startStreaming = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v78 (WebRTC Streaming - Fix ReferenceError)");
+                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v82 (WebRTC Streaming - Robust Video Assignment)");
 
                 // Get the current user ID directly from Firebase Auth right before using it
                 const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1344,7 +1326,7 @@
                     }
 
                     setLocalStream(stream);
-                    // No direct assignment here, relying on useEffect for localVideoRef.current
+                    // Removed direct assignment here; relying solely on useEffect for localVideoRef.current
 
 
                     // WebRTC Peer Connection setup - TEMPORARILY USING ONLY PUBLIC STUN SERVER FOR DEBUGGING
@@ -1424,7 +1406,7 @@
                     peerConnectionRef.current.ontrack = (event) => {
                         console.log("DEBUG PROFUNDO: Remote track received:", event.streams[0]);
                         setRemoteStream(event.streams[0]);
-                        // No direct assignment here, relying on useEffect for remoteVideoRef.current
+                        // Removed direct assignment here; relying solely on useEffect for remoteVideoRef.current
                     };
 
                     // NEW: Explicitly create and set offer after adding tracks with a timeout
@@ -1529,7 +1511,7 @@
                         await window.setDoc(webrtcDocRef, {
                             offer: {
                                 sdp: peerConnectionRef.current.localDescription.sdp,
-                                type: peerConnectionRef.current.localDescription.type, // FIX: Changed here
+                                type: peerConnectionRef.current.localDescription.type, // FIX: Corrected from peerConnection to peerConnectionRef.current
                                 senderId: currentAuthUserId,
                                 senderUserName: userName,
                                 timestamp: window.serverTimestamp()
@@ -1674,8 +1656,15 @@
             React.useEffect(() => {
                 console.log("DEBUG PROFUNDO: useEffect for localStream triggered. localStream:", localStream, "localVideoRef.current:", localVideoRef.current);
                 if (localVideoRef.current && localStream) {
-                    localVideoRef.current.srcObject = localStream;
-                    console.log("DEBUG PROFUNDO: Local video stream attached to video element via useEffect.");
+                    // Add a small delay to ensure the video element is fully ready
+                    setTimeout(() => {
+                        if (localVideoRef.current) { // Re-check after timeout
+                            localVideoRef.current.srcObject = localStream;
+                            console.log("DEBUG PROFUNDO: Local video stream attached to video element via useEffect after delay.");
+                        } else {
+                            console.warn("DEBUG PROFUNDO: localVideoRef.current became null during setTimeout for localStream.");
+                        }
+                    }, 500); // Increased to 500ms delay
                 } else if (!localVideoRef.current && localStream) {
                     console.warn("DEBUG PROFUNDO: localVideoRef.current is null in useEffect for localStream, but localStream exists. This might indicate a rendering delay.");
                 }
@@ -1684,8 +1673,15 @@
             React.useEffect(() => {
                 console.log("DEBUG PROFUNDO: useEffect for remoteStream triggered. remoteStream:", remoteStream, "remoteVideoRef.current:", remoteVideoRef.current);
                 if (remoteVideoRef.current && remoteStream) {
-                    remoteVideoRef.current.srcObject = remoteStream;
-                    console.log("DEBUG PROFUNDO: Remote video stream attached to video element via useEffect.");
+                    // Add a small delay to ensure the video element is fully ready
+                    setTimeout(() => {
+                        if (remoteVideoRef.current) { // Re-check after timeout
+                            remoteVideoRef.current.srcObject = remoteStream;
+                            console.log("DEBUG PROFUNDO: Remote video stream attached to video element via useEffect after delay.");
+                        } else {
+                            console.warn("DEBUG PROFUNDO: remoteVideoRef.current became null during setTimeout for remoteStream.");
+                        }
+                    }, 500); // Increased to 500ms delay
                 } else if (!remoteVideoRef.current && remoteStream) {
                     console.warn("DEBUG PROFUNDO: remoteVideoRef.current is null in useEffect for remoteStream, but remoteStream exists. This might indicate a rendering delay.");
                 }
