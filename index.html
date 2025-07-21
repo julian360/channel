@@ -106,7 +106,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v85 (WebRTC Streaming - Robust Video Assignment)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v87 (WebRTC Streaming - Play Button & Track Debugging)");
 
 
         // Helper function to generate a random username for new users
@@ -1068,9 +1068,29 @@
                     peerConnectionRef.current.onicegatheringstatechange = () => {
                         console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState changed to: ${peerConnectionRef.current.iceGatheringState}`);
                     };
+                    // NEW: Log connection state changes for debugging
+                    peerConnectionRef.current.onconnectionstatechange = () => {
+                        console.log(`DEBUG PROFUNDO: RTCPeerConnection state (viewer): ${peerConnectionRef.current.connectionState}`);
+                        if (peerConnectionRef.current.connectionState === 'disconnected' || peerConnectionRef.current.connectionState === 'failed' || peerConnectionRef.current.connectionState === 'closed') {
+                            console.log("DEBUG PROFUNDO: PeerConnection disconnected/failed/closed (viewer). Stopping receiving stream.");
+                            showMessage("Stream desconectado debido a un error de conexión.", 'error');
+                            setTimeout(() => stopReceivingStream(), 500);
+                            // Removed unsubscribeOffer and streamerCandidatesListener from here, as they are handled in the return cleanup
+                        }
+                    };
 
                     peerConnectionRef.current.ontrack = (event) => {
                         console.log("DEBUG PROFUNDO: Remote track received for viewer:", event.streams[0]);
+                        console.log(`DEBUG PROFUNDO: Remote stream active: ${event.streams[0].active}, tracks: ${event.streams[0].getTracks().length}`);
+                        // NEW: Log details of remote video track if available
+                        const videoTracks = event.streams[0].getVideoTracks();
+                        if (videoTracks.length > 0) {
+                            const videoTrack = videoTracks[0];
+                            console.log(`DEBUG PROFUNDO: Remote video track state: ${videoTrack.readyState}, enabled: ${videoTrack.enabled}, muted: ${videoTrack.muted}`);
+                            if (videoTrack.getSettings()) {
+                                console.log(`DEBUG PROFUNDO: Remote video track settings: Width: ${videoTrack.getSettings().width}, Height: ${videoTrack.getSettings().height}, FrameRate: ${videoTrack.getSettings().frameRate}`);
+                            }
+                        }
                         setRemoteStream(event.streams[0]);
                         // No direct assignment here, relying on useEffect for remoteVideoRef.current
                     };
@@ -1084,12 +1104,17 @@
                         if (event.candidate) {
                             console.log("DEBUG PROFUNDO: ICE Candidate found for viewer:", event.candidate);
                             // Save ICE candidate to Firestore with senderId
-                            const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
-                            await window.setDoc(candidateRef, {
-                                ...event.candidate.toJSON(),
-                                senderId: userId // Add senderId to the candidate document
-                            });
-                            console.log("DEBUG PROFUNDO: ICE Candidate saved to Firestore for viewer:", event.candidate.toJSON());
+                            try {
+                                const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
+                                await window.setDoc(candidateRef, {
+                                    ...event.candidate.toJSON(),
+                                    senderId: userId // Add senderId to the candidate document
+                                });
+                                console.log("DEBUG PROFUNDO: ICE Candidate saved to Firestore for viewer:", event.candidate.toJSON());
+                            } catch (e) {
+                                console.error("DEBUG PROFUNDO: Error saving ICE candidate to Firestore (viewer):", e);
+                                showMessage("Error al guardar candidato ICE.", 'error');
+                            }
                         } else {
                             console.log("DEBUG PROFUNDO: All ICE candidates gathered for viewer.");
                         }
@@ -1102,47 +1127,58 @@
                             if (data.offer && data.offer.senderId === streamerId && peerConnectionRef.current && !peerConnectionRef.current.currentRemoteDescription) { // Added peerConnectionRef.current check
                                 const offer = new RTCSessionDescription(data.offer);
                                 console.log("DEBUG PROFUNDO: Received offer from Firestore for viewer:", offer);
-                                await peerConnectionRef.current.setRemoteDescription(offer);
-                                console.log("DEBUG PROFUNDO: Remote description (offer) set for viewer.");
+                                console.log(`DEBUG PROFUNDO: Viewer PC signalingState BEFORE setRemoteDescription(offer): ${peerConnectionRef.current.signalingState}`);
+                                try {
+                                    await peerConnectionRef.current.setRemoteDescription(offer);
+                                    console.log("DEBUG PROFUNDO: Remote description (offer) set for viewer.");
+                                    console.log(`DEBUG PROFUNDO: Viewer PC signalingState AFTER setRemoteDescription(offer): ${peerConnectionRef.current.signalingState}`);
 
-                                // Create and set answer
-                                const answer = await peerConnectionRef.current.createAnswer();
-                                console.log("DEBUG PROFUNDO: Answer created for viewer:", answer);
-                                await peerConnectionRef.current.setLocalDescription(answer);
-                                console.log("DEBUG PROFUNDO: Local description (answer) set for viewer. Local description object:", peerConnectionRef.current.localDescription);
+                                    // Create and set answer
+                                    const answer = await peerConnectionRef.current.createAnswer();
+                                    console.log("DEBUG PROFUNDO: Answer created for viewer:", answer);
+                                    console.log(`DEBUG PROFUNDO: Viewer PC signalingState BEFORE setLocalDescription(answer): ${peerConnectionRef.current.signalingState}`);
+                                    await peerConnectionRef.current.setLocalDescription(answer);
+                                    console.log("DEBUG PROFUNDO: Local description (answer) set for viewer. Local description object:", peerConnectionRef.current.localDescription);
+                                    console.log(`DEBUG PROFUNDO: Viewer PC signalingState AFTER setLocalDescription(answer): ${peerConnectionRef.current.signalingState}`);
 
-                                // Save answer to Firestore
-                                await window.setDoc(webrtcDocRef, {
-                                    answer: {
-                                        sdp: peerConnectionRef.current.localDescription.sdp,
-                                        type: peerConnectionRef.current.localDescription.type,
-                                        receiverId: userId, // Receiver ID is current user
-                                        receiverUserName: userName,
-                                        timestamp: window.serverTimestamp()
-                                    }
-                                }, { merge: true });
-                                console.log("DEBUG PROFUNDO: WebRTC answer saved to Firestore for viewer:", peerConnectionRef.current.localDescription.toJSON());
 
-                                // After setting the answer, collect and add ICE candidates from streamer
-                                const candidateSnapshot = await window.getDocs(candidatesCollectionRef);
-                                candidateSnapshot.forEach(async (candidateDoc) => {
-                                    if (candidateDoc.exists() && candidateDoc.data().senderId === streamerId && peerConnectionRef.current) { // Added peerConnectionRef.current check
-                                        try {
-                                            const candidate = new RTCIceCandidate(candidateDoc.data());
-                                            await peerConnectionRef.current.addIceCandidate(candidate);
-                                            console.log("DEBUG PROFUNDO: Added streamer ICE candidate for viewer:", candidate);
-                                            // Optionally delete the candidate after adding it to avoid processing duplicates
-                                            await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
-                                        } catch (e) {
-                                            console.error("DEBUG PROFUNDO: Error adding streamer ICE candidate for viewer:", e);
+                                    // Save answer to Firestore
+                                    await window.setDoc(webrtcDocRef, {
+                                        answer: {
+                                            sdp: peerConnectionRef.current.localDescription.sdp,
+                                            type: peerConnectionRef.current.localDescription.type,
+                                            receiverId: userId, // Receiver ID is current user
+                                            receiverUserName: userName,
+                                            timestamp: window.serverTimestamp()
                                         }
-                                    }
-                                });
-                                showMessage("Recibiendo stream!", 'success');
+                                    }, { merge: true });
+                                    console.log("DEBUG PROFUNDO: WebRTC answer saved to Firestore for viewer:", peerConnectionRef.current.localDescription.toJSON());
+
+                                    // After setting the answer, collect and add ICE candidates from streamer
+                                    const candidateSnapshot = await window.getDocs(candidatesCollectionRef);
+                                    candidateSnapshot.forEach(async (candidateDoc) => {
+                                        if (candidateDoc.exists() && candidateDoc.data().senderId === streamerId && peerConnectionRef.current) { // Added peerConnectionRef.current check
+                                            try {
+                                                const candidate = new RTCIceCandidate(candidateDoc.data());
+                                                await peerConnectionRef.current.addIceCandidate(candidate);
+                                                console.log("DEBUG PROFUNDO: Added streamer ICE candidate for viewer:", candidate);
+                                                // Optionally delete the candidate after adding it to avoid processing duplicates
+                                                await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
+                                            } catch (e) {
+                                                console.error("DEBUG PROFUNDO: Error adding streamer ICE candidate for viewer (from snapshot):", e);
+                                            }
+                                        }
+                                    });
+                                    showMessage("Recibiendo stream!", 'success');
+                                } catch (e) {
+                                    console.error("DEBUG PROFUNDO: Error setting remote/local description or saving answer (viewer):", e);
+                                    showMessage("Error al procesar oferta/respuesta del stream.", 'error');
+                                }
                             }
                         }
                     }, (error) => {
                         console.error("DEBUG PROFUNDO: Error listening for offer for viewer:", error);
+                        showMessage("Error al escuchar la oferta del stream.", 'error');
                     });
 
                     // Listen for candidates from streamer (after offer is set)
@@ -1159,7 +1195,7 @@
                                             // Optionally delete the candidate after adding it to avoid processing duplicates
                                             await window.deleteDoc(window.doc(candidatesCollectionRef, change.doc.id));
                                         } else {
-                                            console.log("DEBUG PROFUNDO: Remote description not set yet, deferring streamer candidate for viewer:", candidate);
+                                            console.warn("DEBUG PROFUNDO: Remote description not set yet, deferring streamer candidate for viewer:", candidate);
                                         }
                                     } catch (e) {
                                         console.error("DEBUG PROFUNDO: Error adding streamer candidate (via listener) for viewer:", e);
@@ -1169,18 +1205,8 @@
                         });
                     }, (error) => {
                         console.error("DEBUG PROFUNDO: Error listening for streamer candidates for viewer:", error);
+                        showMessage("Error al escuchar candidatos del stream.", 'error');
                     });
-
-                    peerConnectionRef.current.onconnectionstatechange = () => {
-                        console.log(`DEBUG PROFUNDO: RTCPeerConnection state (viewer): ${peerConnectionRef.current.connectionState}`);
-                        if (peerConnectionRef.current.connectionState === 'disconnected' || peerConnectionRef.current.connectionState === 'failed' || peerConnectionRef.current.connectionState === 'closed') {
-                            console.log("DEBUG PROFUNDO: PeerConnection disconnected/failed/closed (viewer). Stopping receiving stream.");
-                            showMessage("Stream desconectado debido a un error de conexión.", 'error');
-                            setTimeout(() => stopReceivingStream(), 500);
-                            unsubscribeOffer();
-                            streamerCandidatesListener(); // Unsubscribe candidates listener
-                        }
-                    };
 
                     return () => {
                         unsubscribeOffer();
@@ -1266,9 +1292,9 @@
             }, [localStream, activeChannel, db, userId, isStreamer, showMessage]);
 
             // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-            // Version: 2025-07-20-DailyFix-v85
+            // Version: 2025-07-20-DailyFix-v87
             const startStreaming = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v85 (WebRTC Streaming - Robust Video Assignment)");
+                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v87 (WebRTC Streaming - Play Button & Track Debugging)");
 
                 // Get the current user ID directly from Firebase Auth right before using it
                 const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1365,11 +1391,28 @@
                     peerConnectionRef.current.onicegatheringstatechange = () => {
                         console.log(`DEBUG PROFUNDO: PeerConnection iceGatheringState changed to: ${peerConnectionRef.current.iceGatheringState}`);
                     };
+                    // NEW: Log connection state changes for debugging
+                    peerConnectionRef.current.onconnectionstatechange = () => {
+                        console.log(`DEBUG PROFUNDO: RTCPeerConnection state (streamer): ${peerConnectionRef.current.connectionState}`);
+                        if (peerConnectionRef.current.connectionState === 'disconnected' || peerConnectionRef.current.connectionState === 'failed' || peerConnectionRef.current.connectionState === 'closed') {
+                            console.log("DEBUG PROFUNDO: PeerConnection disconnected/failed/closed (streamer). Stopping stream.");
+                            showMessage("Stream desconectado debido a un error de conexión.", 'error');
+                            setTimeout(() => stopStreaming(), 500);
+                            // Removed unsubscribeAnswer and channelCandidatesListener from here, as they are handled in the return cleanup
+                        }
+                    };
 
                     // Add local stream tracks to the peer connection
                     stream.getTracks().forEach(track => {
                         peerConnectionRef.current.addTrack(track, stream);
                         console.log("DEBUG PROFUNDO: Added local track to peer connection:", track.kind);
+                        // NEW: Log details of local video track if available
+                        if (track.kind === 'video') {
+                            console.log(`DEBUG PROFUNDO: Local video track state: ${track.readyState}, enabled: ${track.enabled}, muted: ${track.muted}`);
+                            if (track.getSettings()) {
+                                console.log(`DEBUG PROFUNDO: Local video track settings: Width: ${track.getSettings().width}, Height: ${track.getSettings().height}, FrameRate: ${track.getSettings().frameRate}`);
+                            }
+                        }
                     });
 
                     // NEW: Small delay after adding tracks to allow PC to register them fully
@@ -1391,12 +1434,17 @@
                         if (event.candidate) {
                             console.log("DEBUG PROFUNDO: ICE Candidate found:", event.candidate);
                             // Save ICE candidate to Firestore with senderId
-                            const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
-                            await window.setDoc(candidateRef, {
-                                ...event.candidate.toJSON(),
-                                senderId: currentAuthUserId // Add senderId to the candidate document
-                            });
-                            console.log("DEBUG PROFUNDO: ICE Candidate saved to Firestore:", event.candidate.toJSON());
+                            try {
+                                const candidateRef = window.doc(candidatesCollectionRef, event.candidate.sdpMid || 'video' + '_' + event.candidate.sdpMLineIndex + '_' + event.candidate.candidate.split(' ')[4]);
+                                await window.setDoc(candidateRef, {
+                                    ...event.candidate.toJSON(),
+                                    senderId: currentAuthUserId // Add senderId to the candidate document
+                                });
+                                console.log("DEBUG PROFUNDO: ICE Candidate saved to Firestore:", event.candidate.toJSON());
+                            } catch (e) {
+                                console.error("DEBUG PROFUNDO: Error saving ICE candidate to Firestore (streamer):", e);
+                                showMessage("Error al guardar candidato ICE.", 'error');
+                            }
                         } else {
                             console.log("DEBUG PROFUNDO: All ICE candidates gathered.");
                         }
@@ -1406,7 +1454,7 @@
                     peerConnectionRef.current.ontrack = (event) => {
                         console.log("DEBUG PROFUNDO: Remote track received:", event.streams[0]);
                         setRemoteStream(event.streams[0]);
-                        // No direct assignment here, relying on useEffect for remoteVideoRef.current
+                        // No direct assignment here; relying solely on useEffect for remoteVideoRef.current
                     };
 
                     // NEW: Explicitly create and set offer after adding tracks with a timeout
@@ -1561,30 +1609,38 @@
                             if (data.answer && data.answer.receiverId === currentAuthUserId && peerConnectionRef.current && !peerConnectionRef.current.currentRemoteDescription) { // Added peerConnectionRef.current check
                                 const answer = new RTCSessionDescription(data.answer);
                                 console.log("DEBUG PROFUNDO: Received answer from Firestore:", answer);
-                                await peerConnectionRef.current.setRemoteDescription(answer);
-                                console.log("DEBUG PROFUNDO: Remote description (answer) set.");
-                                showMessage("Respuesta de espectador recibida.", 'info');
+                                console.log(`DEBUG PROFUNDO: Streamer PC signalingState BEFORE setRemoteDescription(answer): ${peerConnectionRef.current.signalingState}`);
+                                try {
+                                    await peerConnectionRef.current.setRemoteDescription(answer);
+                                    console.log("DEBUG PROFUNDO: Remote description (answer) set.");
+                                    console.log(`DEBUG PROFUNDO: Streamer PC signalingState AFTER setRemoteDescription(answer): ${peerConnectionRef.current.signalingState}`);
+                                    showMessage("Respuesta de espectador recibida.", 'info');
 
-                                // After setting the answer, collect and add ICE candidates from viewer
-                                // NOW LISTENING TO THE UNIFIED CANDIDATES COLLECTION
-                                const candidateSnapshot = await window.getDocs(candidatesCollectionRef);
-                                candidateSnapshot.forEach(async (candidateDoc) => {
-                                    if (candidateDoc.exists() && candidateDoc.data().senderId !== currentAuthUserId && peerConnectionRef.current) { // Added peerConnectionRef.current check
-                                        try {
-                                            const candidate = new RTCIceCandidate(candidateDoc.data());
-                                            await peerConnectionRef.current.addIceCandidate(candidate);
-                                            console.log("DEBUG PROFUNDO: Added viewer ICE candidate:", candidate);
-                                            // Optionally delete the candidate after adding it to avoid processing duplicates
-                                            await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
-                                        } catch (e) {
-                                            console.error("DEBUG PROFUNDO: Error adding viewer ICE candidate:", e);
+                                    // After setting the answer, collect and add ICE candidates from viewer
+                                    // NOW LISTENING TO THE UNIFIED CANDIDATES COLLECTION
+                                    const candidateSnapshot = await window.getDocs(candidatesCollectionRef);
+                                    candidateSnapshot.forEach(async (candidateDoc) => {
+                                        if (candidateDoc.exists() && candidateDoc.data().senderId !== currentAuthUserId && peerConnectionRef.current) { // Added peerConnectionRef.current check
+                                            try {
+                                                const candidate = new RTCIceCandidate(candidateDoc.data());
+                                                await peerConnectionRef.current.addIceCandidate(candidate);
+                                                console.log("DEBUG PROFUNDO: Added viewer ICE candidate:", candidate);
+                                                // Optionally delete the candidate after adding it to avoid processing duplicates
+                                                await window.deleteDoc(window.doc(candidatesCollectionRef, candidateDoc.id));
+                                            } catch (e) {
+                                                console.error("DEBUG PROFUNDO: Error adding viewer ICE candidate (from snapshot):", e);
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                } catch (e) {
+                                    console.error("DEBUG PROFUNDO: Error setting remote description (streamer, answer):", e);
+                                    showMessage("Error al procesar respuesta del espectador.", 'error');
+                                }
                             }
                         }
                     }, (error) => {
                         console.error("DEBUG PROFUNDO: Error listening for answer:", error);
+                        showMessage("Error al escuchar la respuesta del stream.", 'error');
                     });
 
                     // Listen for candidates from viewers (after answer is set) - NOW LISTENING TO UNIFIED CANDIDATES COLLECTION
@@ -1601,7 +1657,7 @@
                                             // Optionally delete the candidate after adding it to avoid processing duplicates
                                             await window.deleteDoc(window.doc(candidatesCollectionRef, change.doc.id));
                                         } else {
-                                            console.log("DEBUG PROFUNDO: Remote description not set yet, deferring viewer candidate:", candidate);
+                                            console.warn("DEBUG PROFUNDO: Remote description not set yet, deferring viewer candidate:", candidate);
                                         }
                                     } catch (e) {
                                         console.error("DEBUG PROFUNDO: Error adding viewer candidate (via listener):", e);
@@ -1611,20 +1667,12 @@
                             });
                         }, (error) => {
                             console.error("DEBUG PROFUNDO: Error listening for viewer candidates:", error);
+                            showMessage("Error al escuchar candidatos del espectador.", 'error');
                         });
 
                         // Clean up listeners when component unmounts or stream stops
-                        peerConnectionRef.current.onconnectionstatechange = () => {
-                            console.log(`DEBUG PROFUNDO: RTCPeerConnection state: ${peerConnectionRef.current.connectionState}`);
-                            if (peerConnectionRef.current.connectionState === 'disconnected' || peerConnectionRef.current.connectionState === 'failed' || peerConnectionRef.current.connectionState === 'closed') {
-                                console.log("DEBUG PROFUNDO: PeerConnection disconnected/failed/closed. Stopping stream.");
-                                showMessage("Stream desconectado debido a un error de conexión.", 'error');
-                                setTimeout(() => stopStreaming(), 500);
-                                unsubscribeAnswer();
-                                channelCandidatesListener(); // Unsubscribe candidates listener
-                            }
-                        };
-
+                        // Moved onconnectionstatechange listener definition to receiveStream and startStreaming
+                        // to ensure it's set up immediately with the PC and cleaned up with the PC's lifecycle.
                         return () => {
                             unsubscribeAnswer();
                             channelCandidatesListener(); // Unsubscribe candidates listener
@@ -1659,6 +1707,8 @@
                 if (localVideoRef.current && localStream && isStreamer) {
                     localVideoRef.current.srcObject = localStream;
                     console.log("DEBUG PROFUNDO: Local video stream attached to video element via useEffect.");
+                    // NEW: Play the local video when it's attached
+                    localVideoRef.current.play().catch(e => console.error("DEBUG PROFUNDO: Error playing local video:", e));
                 } else if (!localVideoRef.current && localStream && isStreamer) {
                     console.warn("DEBUG PROFUNDO: localVideoRef.current is null in useEffect for localStream, but localStream exists and isStreamer is true. This might indicate a rendering delay.");
                 }
@@ -1674,6 +1724,8 @@
                         if (remoteVideoRef.current) { // Re-check after timeout
                             remoteVideoRef.current.srcObject = remoteStream;
                             console.log("DEBUG PROFUNDO: Remote video stream attached to video element via useEffect after delay.");
+                            // NEW: Attempt to play the remote video when it's attached
+                            remoteVideoRef.current.play().catch(e => console.error("DEBUG PROFUNDO: Error playing remote video:", e));
                         } else {
                             console.warn("DEBUG PROFUNDO: remoteVideoRef.current became null during setTimeout for remoteStream.");
                         }
@@ -1977,6 +2029,7 @@
                                     <video
                                         ref={remoteVideoRef}
                                         autoPlay
+                                        muted // NEW: Mute remote video to bypass autoplay policies
                                         playsInline // ADDED: playsInline for iOS
                                         className="absolute inset-0 w-full h-full object-contain"
                                     ></video>
@@ -1985,6 +2038,15 @@
                                     <div className="absolute inset-0 flex items-center justify-center text-white text-xl">
                                         Waiting for stream...
                                     </div>
+                                )}
+                                {/* NEW: Play button for viewer if remoteStream exists and is not playing */}
+                                {!isStreamer && remoteStream && remoteVideoRef.current && remoteVideoRef.current.paused && (
+                                    <button
+                                        onClick={() => remoteVideoRef.current.play().catch(e => console.error("DEBUG PROFUNDO: Error playing remote video via button:", e))}
+                                        className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white text-xl font-bold rounded-lg cursor-pointer hover:bg-opacity-75 transition-opacity duration-200"
+                                    >
+                                        ▶️ Play Stream
+                                    </button>
                                 )}
                             </div>
                         )}
