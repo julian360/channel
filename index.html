@@ -106,7 +106,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v83 (WebRTC Streaming - Robust Video Assignment)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v85 (WebRTC Streaming - Robust Video Assignment)");
 
 
         // Helper function to generate a random username for new users
@@ -1266,9 +1266,9 @@
             }, [localStream, activeChannel, db, userId, isStreamer, showMessage]);
 
             // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-            // Version: 2025-07-20-DailyFix-v83
+            // Version: 2025-07-20-DailyFix-v85
             const startStreaming = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v83 (WebRTC Streaming - Robust Video Assignment)");
+                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v85 (WebRTC Streaming - Robust Video Assignment)");
 
                 // Get the current user ID directly from Firebase Auth right before using it
                 const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1406,7 +1406,7 @@
                     peerConnectionRef.current.ontrack = (event) => {
                         console.log("DEBUG PROFUNDO: Remote track received:", event.streams[0]);
                         setRemoteStream(event.streams[0]);
-                        // Removed direct assignment here; relying solely on useEffect for remoteVideoRef.current
+                        // No direct assignment here, relying on useEffect for remoteVideoRef.current
                     };
 
                     // NEW: Explicitly create and set offer after adding tracks with a timeout
@@ -1424,7 +1424,7 @@
 
                         // Check overall stream state (active and tracks count)
                         if (!stream.active || stream.getTracks().length === 0) {
-                             const errorMessage = `Media stream is not active or has no tracks. Active: ${stream.active}, Tracks: ${stream.getTracks().length}.`;
+                             const errorMessage = "Media stream is not active or has no tracks. Active: " + stream.active + ", Tracks: " + stream.getTracks().length + ".";
                              console.warn("DEBUG PROFUNDO: " + errorMessage);
                              if (i === maxReadinessRetries - 1) {
                                  showMessage(errorMessage + " Please check your camera/microphone.", 'error');
@@ -1446,7 +1446,7 @@
                             console.log(`DEBUG PROFUNDO: Final Media Stream readyState (for info): ${stream.readyState}`);
                             break; // All ready, exit readiness loop
                         } else {
-                            const errorMessage = `Not all media tracks are ready. Waiting for readyState 'live'.`;
+                            const errorMessage = "Not all media tracks are ready. Waiting for readyState 'live'.";
                             console.warn("DEBUG PROFUNDO: " + errorMessage);
                             if (i === maxReadinessRetries - 1) {
                                 showMessage(errorMessage + " Please ensure your camera/microphone are fully initialized.", 'error');
@@ -1652,27 +1652,23 @@
                     }
                 }, [db, userId, userName, showMessage, isStartingStream, isStreaming, isReceivingStream, localStream, activeChannel, auth, stopStreaming]); // Added stopStreaming to dependencies
 
-            // Effect to assign streams to video elements
+            // Effect to assign localStream to local video element
             React.useEffect(() => {
-                console.log("DEBUG PROFUNDO: useEffect for localStream triggered. localStream:", localStream, "localVideoRef.current:", localVideoRef.current);
-                if (localVideoRef.current && localStream) {
-                    // Add a small delay to ensure the video element is fully ready
-                    setTimeout(() => {
-                        if (localVideoRef.current) { // Re-check after timeout
-                            localVideoRef.current.srcObject = localStream;
-                            console.log("DEBUG PROFUNDO: Local video stream attached to video element via useEffect after delay.");
-                        } else {
-                            console.warn("DEBUG PROFUNDO: localVideoRef.current became null during setTimeout for localStream.");
-                        }
-                    }, 1000); // Increased to 1000ms delay
-                } else if (!localVideoRef.current && localStream) {
-                    console.warn("DEBUG PROFUNDO: localVideoRef.current is null in useEffect for localStream, but localStream exists. This might indicate a rendering delay.");
+                console.log("DEBUG PROFUNDO: useEffect for localStream triggered. localStream:", localStream, "localVideoRef.current:", localVideoRef.current, "isStreamer:", isStreamer);
+                // Only attempt to attach if localVideoRef.current is available and localStream exists, AND we are the streamer
+                if (localVideoRef.current && localStream && isStreamer) {
+                    localVideoRef.current.srcObject = localStream;
+                    console.log("DEBUG PROFUNDO: Local video stream attached to video element via useEffect.");
+                } else if (!localVideoRef.current && localStream && isStreamer) {
+                    console.warn("DEBUG PROFUNDO: localVideoRef.current is null in useEffect for localStream, but localStream exists and isStreamer is true. This might indicate a rendering delay.");
                 }
-            }, [localStream]);
+            }, [localStream, isStreamer]);
 
+            // Effect to assign remoteStream to remote video element
             React.useEffect(() => {
-                console.log("DEBUG PROFUNDO: useEffect for remoteStream triggered. remoteStream:", remoteStream, "remoteVideoRef.current:", remoteVideoRef.current);
-                if (remoteVideoRef.current && remoteStream) {
+                console.log("DEBUG PROFUNDO: useEffect for remoteStream triggered. remoteStream:", remoteStream, "remoteVideoRef.current:", remoteVideoRef.current, "isReceivingStream:", isReceivingStream);
+                // Only attempt to attach if remoteVideoRef.current is available and remoteStream exists, AND we are receiving a stream
+                if (remoteVideoRef.current && remoteStream && isReceivingStream) {
                     // Add a small delay to ensure the video element is fully ready
                     setTimeout(() => {
                         if (remoteVideoRef.current) { // Re-check after timeout
@@ -1682,10 +1678,10 @@
                             console.warn("DEBUG PROFUNDO: remoteVideoRef.current became null during setTimeout for remoteStream.");
                         }
                     }, 1000); // Increased to 1000ms delay
-                } else if (!remoteVideoRef.current && remoteStream) {
-                    console.warn("DEBUG PROFUNDO: remoteVideoRef.current is null in useEffect for remoteStream, but remoteStream exists. This might indicate a rendering delay.");
+                } else if (!remoteVideoRef.current && remoteStream && isReceivingStream) {
+                    console.warn("DEBUG PROFUNDO: remoteVideoRef.current is null in useEffect for remoteStream, but remoteStream exists and isReceivingStream is true. This might indicate a rendering delay.");
                 }
-            }, [remoteStream]);
+            }, [remoteStream, isReceivingStream]);
 
 
             const copyToClipboard = React.useCallback((text) => {
