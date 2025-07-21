@@ -106,7 +106,7 @@
 
     <script type="text/babel">
         // Debug message to verify code version
-        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v82 (WebRTC Streaming - Robust Video Assignment)");
+        console.log("DEBUG PROFUNDO: Code version: 2025-07-20-DailyFix-v83 (WebRTC Streaming - Robust Video Assignment)");
 
 
         // Helper function to generate a random username for new users
@@ -1266,9 +1266,9 @@
             }, [localStream, activeChannel, db, userId, isStreamer, showMessage]);
 
             // NEW: WebRTC: Function to start streaming (get camera/mic, create peer connection, offer)
-            // Version: 2025-07-20-DailyFix-v82
+            // Version: 2025-07-20-DailyFix-v83
             const startStreaming = React.useCallback(async () => {
-                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v82 (WebRTC Streaming - Robust Video Assignment)");
+                console.log("DEBUG PROFUNDO: startStreaming - Initiated. Version: 2025-07-20-DailyFix-v83 (WebRTC Streaming - Robust Video Assignment)");
 
                 // Get the current user ID directly from Firebase Auth right before using it
                 const currentAuthUser = auth.currentUser; // Use auth from state
@@ -1664,7 +1664,7 @@
                         } else {
                             console.warn("DEBUG PROFUNDO: localVideoRef.current became null during setTimeout for localStream.");
                         }
-                    }, 500); // Increased to 500ms delay
+                    }, 1000); // Increased to 1000ms delay
                 } else if (!localVideoRef.current && localStream) {
                     console.warn("DEBUG PROFUNDO: localVideoRef.current is null in useEffect for localStream, but localStream exists. This might indicate a rendering delay.");
                 }
@@ -1681,7 +1681,7 @@
                         } else {
                             console.warn("DEBUG PROFUNDO: remoteVideoRef.current became null during setTimeout for remoteStream.");
                         }
-                    }, 500); // Increased to 500ms delay
+                    }, 1000); // Increased to 1000ms delay
                 } else if (!remoteVideoRef.current && remoteStream) {
                     console.warn("DEBUG PROFUNDO: remoteVideoRef.current is null in useEffect for remoteStream, but remoteStream exists. This might indicate a rendering delay.");
                 }
